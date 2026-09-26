@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 
 /// Minimal mutual-match confirmation, shown right after a decide() call
 /// flips a Connection to MUTUAL_INTEREST. Deliberately thin per the
-/// brief -- the full mutual-reveal / Live Snap / chat experience is WP4,
-/// not this one; this screen's only job is to tell the user it happened
-/// and send them back to Discovery.
+/// brief -- the full mutual-reveal (seeing who it was) / Live Snap / chat
+/// experience is WP4, not this one. No name or photo here either, same
+/// "hear before you see" rule that governs the discovery card itself --
+/// the backend doesn't send candidate identity to the client at all yet,
+/// so there is nothing this screen could show even if it wanted to.
 class MatchScreen extends StatelessWidget {
-  const MatchScreen({super.key, this.matchedDisplayName});
-
-  final String? matchedDisplayName;
+  const MatchScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -23,10 +23,8 @@ class MatchScreen extends StatelessWidget {
               const SizedBox(height: 16),
               Text('You matched!', style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 8),
-              Text(
-                matchedDisplayName != null
-                    ? 'You and $matchedDisplayName are both interested.'
-                    : 'You\'re both interested in each other.',
+              const Text(
+                'You\'re both interested. Their full reveal comes later.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),

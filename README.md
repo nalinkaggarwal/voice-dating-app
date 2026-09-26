@@ -48,7 +48,7 @@ npm run start:dev
 
 Tests: `npm test` (Vitest, all offline — Prisma/OTP-delivery/queues are
 mocked, no live DB or Redis needed). Lint: `npm run lint`. Type-check:
-`npx tsc --noEmit`. **127 tests, all passing** as of WP3.
+`npx tsc --noEmit`. **129 tests, all passing** as of WP3.
 
 ### API versioning
 
@@ -132,7 +132,7 @@ retain yet.
 ### Daily discovery + matching — WP3
 
 ```
-GET  /discovery/queue/today            -> { entries: [{ id, reasonText, candidate: { userId, displayName, photoUrl, voiceClipUrl } }] }
+GET  /discovery/queue/today            -> { entries: [{ id, reasonText, voiceClipUrl }] }
 POST /discovery/queue/:entryId/decide  { decision: "PASS" | "INTERESTED" } -> { entry, matched }
 ```
 
@@ -140,6 +140,17 @@ One curated candidate a day per user by default — **not** a swipe feed,
 no browsing ahead. The per-day limit is DB-backed (`DiscoveryConfig`,
 keyed by `User.tier`), read fresh on every generation run, so free vs.
 premium limits can be changed independently at runtime with no deploy.
+
+**Launch-blocking rule, verified explicitly (not just by inspection):**
+`GET .../today` never returns a candidate's name, photo, or userId —
+only `reasonText` and a signed `voiceClipUrl`. "Hear before you see" is
+the app's entire premise (see the tagline above); `DiscoveryService.today()`
+doesn't even query `Profile`, so there's no "fetched but not sent" step to
+get wrong. `discovery.service.spec.ts` pins the exact response key set
+and asserts `Profile` is never queried by this path. The Flutter
+`DiscoveryEntry` model mirrors this — it has no `displayName`/`photoUrl`
+field to accidentally render, and the candidate card shows a generic
+silhouette instead.
 
 **Pipeline** (`QueueGenerationService`, run daily at 3am UTC via
 `@nestjs/schedule`): `EligibilityService` applies hard filters (ACTIVE

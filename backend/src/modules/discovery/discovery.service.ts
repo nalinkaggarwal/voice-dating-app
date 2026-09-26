@@ -9,16 +9,20 @@ export interface TodayQueueEntryView {
   reasonText: string;
   queueDate: Date;
   sequenceInDay: number;
-  candidate: {
-    userId: string;
-    displayName: string | null;
-    /** Signed, time-limited GET URL -- null if no photo uploaded yet. */
-    photoUrl: string | null;
-    /** Signed, time-limited GET URL of the candidate's latest approved
-     * voice recording -- null if they don't have one (shouldn't happen
-     * for an ACTIVE candidate, but the client should tolerate it). */
-    voiceClipUrl: string | null;
-  };
+  /** Signed, time-limited GET URL of the candidate's latest approved
+   * voice recording -- null if they don't have one (shouldn't happen for
+   * an ACTIVE candidate, but the client should tolerate it).
+   *
+   * LAUNCH-BLOCKING RULE, not a style choice: this is the ONLY
+   * candidate-identifying thing exposed here. No name, no photo, no
+   * userId -- "hear before you see" is the app's entire premise (see
+   * README's opening line), and a candidate's photo/identity leaking
+   * into the pre-decision payload would defeat it even if the mobile UI
+   * never renders it. Enforced by this interface only ever HAVING these
+   * four fields (see discovery.service.spec.ts's guardrail test), not by
+   * trusting every caller to remember not to add more.
+   */
+  voiceClipUrl: string | null;
 }
 
 @Injectable()
@@ -30,10 +34,11 @@ export class DiscoveryService {
   ) {}
 
   /**
-   * Shapes each queue entry with exactly what the candidate card needs to
-   * render (name, photo, voice clip) -- the raw DiscoveryQueueEntry row
-   * only stores candidateId, never denormalized candidate data, so this
-   * always does a fresh join rather than risking stale display info.
+   * Shapes each queue entry with exactly what's allowed pre-decision: the
+   * reason text and a signed voice clip URL. Deliberately does NOT join
+   * in Profile at all (not displayName, not photoUrl) -- there is no
+   * "fetch it but don't send it" step to get wrong, because the data
+   * powering this response never leaves the DB in the first place.
    */
   async today(userId: string): Promise<TodayQueueEntryView[]> {
     const entries = await this.prisma.discoveryQueueEntry.findMany({
@@ -43,15 +48,11 @@ export class DiscoveryService {
     if (entries.length === 0) return [];
 
     const candidateIds = [...new Set(entries.map((e) => e.candidateId))];
-    const [profiles, voiceAnswers] = await Promise.all([
-      this.prisma.profile.findMany({ where: { userId: { in: candidateIds } } }),
-      this.prisma.voiceAnswer.findMany({
-        where: { userId: { in: candidateIds }, status: VoiceAnswerStatus.USER_APPROVED },
-        orderBy: { updatedAt: 'desc' },
-      }),
-    ]);
+    const voiceAnswers = await this.prisma.voiceAnswer.findMany({
+      where: { userId: { in: candidateIds }, status: VoiceAnswerStatus.USER_APPROVED },
+      orderBy: { updatedAt: 'desc' },
+    });
 
-    const profileByUserId = new Map(profiles.map((p) => [p.userId, p]));
     // First (most recent, thanks to the orderBy above) approved voice
     // answer per candidate wins -- a candidate could in principle have
     // more than one across re-recordings.
@@ -64,23 +65,16 @@ export class DiscoveryService {
 
     return Promise.all(
       entries.map(async (entry) => {
-        const profile = profileByUserId.get(entry.candidateId);
         const voiceAnswer = latestVoiceAnswerByUserId.get(entry.candidateId);
-        const [photoUrl, voiceClipUrl] = await Promise.all([
-          profile?.photoUrl ? this.storage.getDownloadUrl(profile.photoUrl) : Promise.resolve(null),
-          voiceAnswer?.audioUrl ? this.storage.getDownloadUrl(voiceAnswer.audioUrl) : Promise.resolve(null),
-        ]);
+        const voiceClipUrl = voiceAnswer?.audioUrl
+          ? await this.storage.getDownloadUrl(voiceAnswer.audioUrl)
+          : null;
         return {
           id: entry.id,
           reasonText: entry.reasonText,
           queueDate: entry.queueDate,
           sequenceInDay: entry.sequenceInDay,
-          candidate: {
-            userId: entry.candidateId,
-            displayName: profile?.displayName ?? null,
-            photoUrl,
-            voiceClipUrl,
-          },
+          voiceClipUrl,
         };
       }),
     );

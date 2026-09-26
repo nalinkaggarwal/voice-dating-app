@@ -33,13 +33,10 @@ class _DiscoveryBody extends StatelessWidget {
     DiscoveryState state,
     DiscoveryDecision decision,
   ) async {
-    final matchedDisplayName = state.currentEntry?.candidate.displayName;
     final matched = await state.decide(decision);
     if (matched && context.mounted) {
       await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => MatchScreen(matchedDisplayName: matchedDisplayName),
-        ),
+        MaterialPageRoute(builder: (_) => const MatchScreen()),
       );
     }
   }
@@ -127,29 +124,22 @@ class _CandidateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final candidate = entry.candidate;
-
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        CircleAvatar(
-          radius: 72,
-          backgroundImage: candidate.photoUrl != null ? NetworkImage(candidate.photoUrl!) : null,
-          child: candidate.photoUrl == null ? const Icon(Icons.person, size: 64) : null,
-        ),
-        const SizedBox(height: 16),
-        Text(
-          candidate.displayName ?? 'Someone new',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 16),
-        if (candidate.voiceClipUrl != null)
+        // No photo, no name -- deliberately. "Hear before you see" is the
+        // whole premise; a candidate's identity is never shown before a
+        // decision (see DiscoveryEntry's own docstring). This silhouette
+        // is a placeholder for "someone new", not a preview of anyone.
+        const CircleAvatar(radius: 72, child: Icon(Icons.person, size: 64)),
+        const SizedBox(height: 24),
+        if (entry.voiceClipUrl != null)
           // Keyed on the entry -- without this, advancing to the next
           // candidate would reuse the previous VoiceClipPlayer's State
           // (same widget position in the tree), potentially leaving a
           // stale "playing" indicator or a still-running player from the
           // PREVIOUS candidate's clip.
-          VoiceClipPlayer(key: ValueKey(entry.id), source: UrlSource(candidate.voiceClipUrl!))
+          VoiceClipPlayer(key: ValueKey(entry.id), source: UrlSource(entry.voiceClipUrl!))
         else
           const Text('No voice intro available yet.', style: TextStyle(fontStyle: FontStyle.italic)),
         const SizedBox(height: 16),

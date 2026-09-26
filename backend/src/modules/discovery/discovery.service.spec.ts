@@ -177,15 +177,10 @@ describe('DiscoveryService', () => {
       });
     });
 
-    it('joins in candidate displayName, signed photo URL, and signed voice clip URL', async () => {
+    it('joins in the signed voice clip URL', async () => {
       const entry = makeEntry({ id: 'entry-1', candidateId: 'candidate-1' });
       prisma = {
         discoveryQueueEntry: { findMany: vi.fn(async () => [entry]) },
-        profile: {
-          findMany: vi.fn(async () => [
-            { userId: 'candidate-1', displayName: 'Alex', photoUrl: 'photo/abc.jpg' },
-          ]),
-        },
         voiceAnswer: {
           findMany: vi.fn(async () => [
             { userId: 'candidate-1', audioUrl: 'voice/xyz.webm', updatedAt: new Date('2026-09-20') },
@@ -196,26 +191,21 @@ describe('DiscoveryService', () => {
 
       const [view] = await service.today('user-1');
 
-      expect(view.candidate.displayName).toBe('Alex');
-      expect(view.candidate.photoUrl).toBe('https://signed.example.com/photo/abc.jpg');
-      expect(view.candidate.voiceClipUrl).toBe('https://signed.example.com/voice/xyz.webm');
-      expect(storage.getDownloadUrl).toHaveBeenCalledWith('photo/abc.jpg');
+      expect(view.voiceClipUrl).toBe('https://signed.example.com/voice/xyz.webm');
       expect(storage.getDownloadUrl).toHaveBeenCalledWith('voice/xyz.webm');
     });
 
-    it('tolerates a candidate with no photo and no approved voice answer -- nulls, not errors', async () => {
+    it('tolerates a candidate with no approved voice answer -- null, not an error', async () => {
       const entry = makeEntry();
       prisma = {
         discoveryQueueEntry: { findMany: vi.fn(async () => [entry]) },
-        profile: { findMany: vi.fn(async () => [{ userId: 'candidate-1', displayName: 'Alex', photoUrl: null }]) },
         voiceAnswer: { findMany: vi.fn(async () => []) },
       };
       service = new DiscoveryService(prisma, connections as any, storage as any);
 
       const [view] = await service.today('user-1');
 
-      expect(view.candidate.photoUrl).toBeNull();
-      expect(view.candidate.voiceClipUrl).toBeNull();
+      expect(view.voiceClipUrl).toBeNull();
       expect(storage.getDownloadUrl).not.toHaveBeenCalled();
     });
 
@@ -223,7 +213,6 @@ describe('DiscoveryService', () => {
       const entry = makeEntry();
       prisma = {
         discoveryQueueEntry: { findMany: vi.fn(async () => [entry]) },
-        profile: { findMany: vi.fn(async () => []) },
         voiceAnswer: {
           // Simulates the query's own `orderBy: { updatedAt: 'desc' }` --
           // most recent first, so the service's "first wins" logic picks it.
@@ -236,7 +225,43 @@ describe('DiscoveryService', () => {
       service = new DiscoveryService(prisma, connections as any, storage as any);
 
       const [view] = await service.today('user-1');
-      expect(view.candidate.voiceClipUrl).toBe('https://signed.example.com/voice/newest.webm');
+      expect(view.voiceClipUrl).toBe('https://signed.example.com/voice/newest.webm');
+    });
+  });
+
+  describe('guardrail: no candidate identity is exposed before a decision', () => {
+    it('never queries Profile at all -- displayName/photoUrl cannot leak if the data is never fetched', async () => {
+      const entry = makeEntry();
+      const profileFindMany = vi.fn();
+      prisma = {
+        discoveryQueueEntry: { findMany: vi.fn(async () => [entry]) },
+        voiceAnswer: { findMany: vi.fn(async () => []) },
+        profile: { findMany: profileFindMany },
+      };
+      service = new DiscoveryService(prisma, connections as any, storage as any);
+
+      await service.today('user-1');
+
+      expect(profileFindMany).not.toHaveBeenCalled();
+    });
+
+    it("today()'s response shape has exactly these keys -- no name, no photo, no candidate userId", async () => {
+      const entry = makeEntry();
+      prisma = {
+        discoveryQueueEntry: { findMany: vi.fn(async () => [entry]) },
+        voiceAnswer: { findMany: vi.fn(async () => []) },
+      };
+      service = new DiscoveryService(prisma, connections as any, storage as any);
+
+      const [view] = await service.today('user-1');
+
+      expect(Object.keys(view).sort()).toEqual([
+        'id',
+        'queueDate',
+        'reasonText',
+        'sequenceInDay',
+        'voiceClipUrl',
+      ]);
     });
   });
 });
