@@ -4,6 +4,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { PrismaModule } from './shared/prisma/prisma.module.js';
 import { StorageModule } from './shared/storage/storage.module.js';
+import { QueueModule } from './shared/queue/queue.module.js';
 import { IdentityModule } from './modules/identity/identity.module.js';
 import { ProfileModule } from './modules/profile/profile.module.js';
 import { AiProfileModule } from './modules/ai-profile/ai-profile.module.js';
@@ -20,6 +21,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     PrismaModule,
     StorageModule,
+    QueueModule,
     IdentityModule,
     ProfileModule,
     AiProfileModule,

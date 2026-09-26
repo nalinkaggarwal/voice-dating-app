@@ -3,18 +3,14 @@ import 'package:provider/provider.dart';
 
 import '../../auth/application/auth_state.dart';
 
-/// WP1 shell: signup succeeds and lands here. Real onboarding (basic
-/// info -> preferences -> intent -> voice recording -> AI review ->
-/// photo, matching UserStatus's progression) is built out in a later
-/// work package.
-class OnboardingPlaceholderScreen extends StatelessWidget {
-  const OnboardingPlaceholderScreen({super.key});
+class OnboardingCompleteStep extends StatelessWidget {
+  const OnboardingCompleteStep({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Welcome to Lolly.ai'),
+        title: const Text("You're all set!"),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -26,7 +22,7 @@ class OnboardingPlaceholderScreen extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-            "You're in! Onboarding (basic info, preferences, voice recording) "
+            'Your profile is ready. Discovery (matching on voice + preferences) '
             'lands in the next work package.',
             textAlign: TextAlign.center,
           ),

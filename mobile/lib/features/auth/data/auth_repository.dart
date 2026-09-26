@@ -1,5 +1,6 @@
 import '../../../shared/api/api_client.dart';
 import '../../../shared/api/token_storage.dart';
+import '../../../shared/models/user.dart';
 import '../domain/auth_channel.dart';
 
 /// All calls to the backend's /auth/* endpoints. Presentation code never
@@ -67,6 +68,11 @@ class AuthRepository {
 
   Future<bool> hasStoredSession() async {
     return (await _tokenStorage.readRefreshToken()) != null;
+  }
+
+  Future<User> getCurrentUser() async {
+    final response = await _api.get('/auth/me', authenticated: true);
+    return User.fromJson(response);
   }
 
   Future<void> _persistTokens(Map<String, dynamic> response) async {
