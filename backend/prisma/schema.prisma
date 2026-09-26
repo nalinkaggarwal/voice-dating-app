@@ -1,0 +1,160 @@
+// Lolly.ai — WP1 schema.
+// Core entities are exactly as specified in the WP1 kickoff brief.
+// OtpChallenge and RefreshToken are additions needed to actually implement
+// the brief's auth requirements (OTP-only, rotating refresh tokens) --
+// the brief didn't spec their columns, so documented reasoning is inline.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String     @id @default(uuid())
+  email       String?    @unique
+  phone       String?    @unique
+  dateOfBirth DateTime
+  status      UserStatus @default(ACCOUNT_CREATED)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  consents      Consent[]
+  profile       Profile?
+  refreshTokens RefreshToken[]
+  otpChallenges OtpChallenge[]
+
+  connectionsAsA Connection[] @relation("ConnectionUserA")
+  connectionsAsB Connection[] @relation("ConnectionUserB")
+
+  // Application-level invariant (Prisma has no portable CHECK constraint):
+  // exactly one of email/phone is required at signup, enforced in
+  // identity/dto and IdentityService, not here.
+}
+
+enum UserStatus {
+  ACCOUNT_CREATED
+  BASIC_INFO_DONE
+  PREFERENCES_DONE
+  INTENT_DONE
+  VOICE_RECORDED
+  AI_REVIEW_DONE
+  PHOTO_UPLOADED
+  ACTIVE
+}
+
+model Consent {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String // e.g. "voice_processing", "data_processing"
+  grantedAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Profile {
+  id          String  @id @default(uuid())
+  userId      String  @unique
+  displayName String?
+  geohash     String? // coarse location only, never exact lat/long
+  photoUrl    String?
+  user        User    @relation(fields: [userId], references: [id])
+}
+
+model Connection {
+  id              String           @id @default(uuid())
+  userAId         String
+  userBId         String
+  status          ConnectionStatus @default(SUGGESTED)
+  userAInterested Boolean          @default(false)
+  userBInterested Boolean          @default(false)
+  userASnapDone   Boolean          @default(false)
+  userBSnapDone   Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  userA User @relation("ConnectionUserA", fields: [userAId], references: [id])
+  userB User @relation("ConnectionUserB", fields: [userBId], references: [id])
+
+  // One row per unordered pair -- ConnectionsService is responsible for
+  // always calling with a canonical (lower-id-first) ordering so a pair
+  // can never get two rows the two possible orderings.
+  @@unique([userAId, userBId])
+  @@index([userBId])
+}
+
+enum ConnectionStatus {
+  SUGGESTED
+  MUTUAL_INTEREST
+  SNAP_PENDING
+  AUTHENTICATED_MATCH
+  ACTIVE
+  BLOCKED
+  CLOSED
+}
+
+// ── Auth support models (not in the brief's schema block) ──────────────
+
+enum OtpChannel {
+  EMAIL
+  PHONE
+}
+
+enum OtpPurpose {
+  SIGNUP
+  LOGIN
+}
+
+model OtpChallenge {
+  id         String     @id @default(uuid())
+  // Nullable: a signup challenge is sent before a User row exists.
+  userId     String?
+  identifier String // the raw email or phone the code was sent to
+  channel    OtpChannel
+  purpose    OtpPurpose
+  codeHash   String // sha256(code + pepper) -- the raw code is never stored
+  expiresAt  DateTime
+  consumedAt DateTime?
+  // Wrong-code attempts against this specific challenge; the service
+  // layer invalidates the challenge once this crosses a small limit,
+  // independent of any IP/account-level rate limiting done elsewhere.
+  attempts   Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  // SIGNUP-purpose only: holds the not-yet-a-User signup input so the
+  // client doesn't have to resend it on verify, and so the User row is
+  // only ever created atomically alongside OTP verification succeeding.
+  pendingDateOfBirth DateTime?
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([identifier, channel, purpose])
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  // sha256 of the raw refresh token -- the raw value is only ever seen by
+  // the client, never persisted.
+  tokenHash  String    @unique
+  // All tokens descended from the same original login share a familyId.
+  // Presenting an already-rotated (or already-revoked) token is treated
+  // as evidence of theft: the whole family is revoked, not just that token.
+  familyId   String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  // id of the token that rotated this one out, for audit/debugging.
+  replacedBy String?
+  createdAt  DateTime  @default(now())
+  userAgent  String?
+  ip         String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([familyId])
+}
