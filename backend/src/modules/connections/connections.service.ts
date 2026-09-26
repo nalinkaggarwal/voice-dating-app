@@ -1,5 +1,13 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, NotImplementedException } from '@nestjs/common';
+import type { Connection } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+
+/** Lower-UUID-first ordering -- the ONE place this ordering rule is
+ * decided, so createSuggestion/markInterested/every future caller agrees
+ * on which side of a pair is "A" without duplicating the comparison. */
+function canonicalPair(userAId: string, userBId: string): [string, string] {
+  return userAId < userBId ? [userAId, userBId] : [userBId, userAId];
+}
 
 /**
  * State machine rules for every method in this service (WP3 implements
@@ -24,23 +32,55 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 export class ConnectionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // TODO(WP3): create a SUGGESTED connection from the discovery/matching
-  // pipeline. Idempotent on (userAId, userBId) -- must not error or
-  // duplicate if a suggestion already exists for this pair.
-  async createSuggestion(_userAId: string, _userBId: string): Promise<never> {
-    throw new NotImplementedException('createSuggestion lands in WP3');
+  // Create a SUGGESTED connection from the discovery/matching pipeline.
+  // Idempotent on (userAId, userBId) via upsert against the schema's own
+  // unique constraint -- calling this again for a pair that already has
+  // a row (in ANY status) just returns the existing row untouched, never
+  // duplicates or errors.
+  async createSuggestion(userAId: string, userBId: string): Promise<Connection> {
+    const [a, b] = canonicalPair(userAId, userBId);
+    return this.prisma.connection.upsert({
+      where: { userAId_userBId: { userAId: a, userBId: b } },
+      create: { userAId: a, userBId: b },
+      update: {}, // already exists (any status) -- no-op, idempotent
+    });
   }
 
-  // TODO(WP3): userId marks interest in connectionId. Transaction must:
-  //   1. Set this user's *Interested flag to true (idempotent no-op if
-  //      already true).
-  //   2. Re-read both flags inside the SAME transaction.
-  //   3. If both are now true, transition status -> MUTUAL_INTEREST and
-  //      trigger the "it's a match" notification exactly once (guard on
-  //      the status transition itself, not on the notification send, so
-  //      a retry after the transition already happened can't re-notify).
-  async markInterested(_userId: string, _connectionId: string): Promise<never> {
-    throw new NotImplementedException('markInterested lands in WP3');
+  // userId marks interest in connectionId. One transaction:
+  //   1. Set this user's *Interested flag to true (idempotent -- setting
+  //      an already-true flag to true again is a harmless no-op).
+  //   2. Re-read both flags inside the SAME transaction (check-then-set,
+  //      not a separate read racing another concurrent call).
+  //   3. If both are now true AND status is still SUGGESTED, transition
+  //      to MUTUAL_INTEREST. Guarding on `status === 'SUGGESTED'` (not
+  //      just "both flags true") is what makes this idempotent against a
+  //      retry: a second call after the transition already fired sees
+  //      status already MUTUAL_INTEREST and skips the transition + its
+  //      side effects, rather than re-firing a "match" notification.
+  async markInterested(userId: string, connectionId: string): Promise<Connection> {
+    return this.prisma.$transaction(async (tx) => {
+      const connection = await tx.connection.findUnique({ where: { id: connectionId } });
+      if (!connection) throw new NotFoundException('Connection not found');
+      if (connection.userAId !== userId && connection.userBId !== userId) {
+        throw new ForbiddenException('You are not a party to this connection');
+      }
+
+      const isUserA = connection.userAId === userId;
+      const updated = await tx.connection.update({
+        where: { id: connectionId },
+        data: isUserA ? { userAInterested: true } : { userBInterested: true },
+      });
+
+      if (updated.userAInterested && updated.userBInterested && updated.status === 'SUGGESTED') {
+        // TODO(WP4+): fire the "it's a match" push notification here,
+        // inside this same guarded branch so it can never double-send.
+        return tx.connection.update({
+          where: { id: connectionId },
+          data: { status: 'MUTUAL_INTEREST' },
+        });
+      }
+      return updated;
+    });
   }
 
   // TODO(WP3): either party declines -> status CLOSED. Idempotent:

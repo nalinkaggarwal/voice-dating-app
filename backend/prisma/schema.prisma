@@ -19,6 +19,11 @@ model User {
   phone       String?    @unique
   dateOfBirth DateTime
   status      UserStatus @default(ACCOUNT_CREATED)
+  // WP3 addition: which daily-candidate-limit tier this user is on (see
+  // DiscoveryConfig). No billing logic here -- billing/ is still a stub
+  // and will presumably set this later; WP3 only needs to KNOW the tier,
+  // not how someone became premium.
+  tier        UserTier   @default(FREE)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -28,6 +33,7 @@ model User {
   otpChallenges OtpChallenge[]
   voiceAnswers  VoiceAnswer[]
   preference    Preference?
+  discoveryQueueEntries DiscoveryQueueEntry[]
 
   connectionsAsA Connection[] @relation("ConnectionUserA")
   connectionsAsB Connection[] @relation("ConnectionUserB")
@@ -35,6 +41,11 @@ model User {
   // Application-level invariant (Prisma has no portable CHECK constraint):
   // exactly one of email/phone is required at signup, enforced in
   // identity/dto and IdentityService, not here.
+}
+
+enum UserTier {
+  FREE
+  PREMIUM
 }
 
 enum UserStatus {
@@ -64,9 +75,27 @@ model Profile {
   displayName String?
   geohash     String? // coarse location only, never exact lat/long
   photoUrl    String?
+  // WP3 addition: the user's OWN gender. Neither WP1 nor WP2 ever
+  // captured this -- Preference.genderInterest only records who a user
+  // is interested in, not what they themselves are, which is a
+  // prerequisite for WP3's mutual gender-compatibility filter (checking
+  // A's genderInterest against B's gender requires B to actually have
+  // one on file). Nullable: a user who hasn't set this yet is simply
+  // ineligible as a CANDIDATE for anyone (can't verify mutual
+  // compatibility) until they do -- enforced in EligibilityService, not
+  // by making this required at the DB level (basic-info submission in
+  // WP2 didn't collect it, so backfilling as NOT NULL would break
+  // existing rows).
+  gender      Gender?
   user        User    @relation(fields: [userId], references: [id])
 
   claims ProfileClaim[]
+}
+
+enum Gender {
+  MAN
+  WOMAN
+  NON_BINARY
 }
 
 model Connection {
@@ -237,4 +266,48 @@ model Preference {
   updatedAt          DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id])
+}
+
+// ── WP3: daily discovery queue ──────────────────────────────────────────
+
+// DB-backed (not env/code) so free vs. premium daily limits can be
+// changed independently without a deploy -- the queue-generation job
+// reads this fresh on every run, so an ops UPDATE takes effect on the
+// next scheduled run automatically. Seeded with both tiers at 1/day
+// (WP3's actual scope is exactly one candidate/day for everyone), but
+// premium can be raised later purely by editing this row.
+model DiscoveryConfig {
+  id                  String   @id @default(uuid())
+  tier                UserTier @unique
+  dailyCandidateLimit Int      @default(1)
+  updatedAt           DateTime @updatedAt
+}
+
+model DiscoveryQueueEntry {
+  id          String   @id @default(uuid())
+  userId      String
+  candidateId String
+  reasonText  String // short, plain-language, non-scored explanation
+  queueDate   DateTime // the day this was generated for (date-only, time zeroed)
+  // 0-indexed rank within this user's batch for queueDate. Almost always
+  // 0 (one candidate/day) -- exists so a premium tier with
+  // dailyCandidateLimit > 1 doesn't need a schema change later; the
+  // brief's own suggested @@unique([userId, queueDate]) would make that
+  // impossible; @@unique([userId, queueDate, sequenceInDay]) preserves
+  // the same "can't double-generate" guarantee per slot instead.
+  sequenceInDay Int      @default(0)
+  shown       Boolean  @default(false)
+  decidedAt   DateTime?
+  decision    DecisionType?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, queueDate, sequenceInDay])
+  @@index([candidateId])
+}
+
+enum DecisionType {
+  PASS
+  INTERESTED
 }

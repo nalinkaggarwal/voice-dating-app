@@ -5,6 +5,7 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/application/auth_state.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/auth/presentation/auth_entry_screen.dart';
+import 'features/discovery/presentation/discovery_home_screen.dart';
 import 'features/onboarding/presentation/onboarding_flow_screen.dart';
 import 'shared/models/user.dart';
 
@@ -67,6 +68,13 @@ class _AppRootState extends State<_AppRoot> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        // A returning ACTIVE user (fresh app launch/login, onboarding
+        // already fully done in a previous session) goes straight to
+        // Discovery -- OnboardingFlowScreen's own resumeFrom mapping only
+        // matters for a user still mid-onboarding.
+        if (snapshot.data!.status == UserStatus.active) {
+          return const DiscoveryHomeScreen();
         }
         return OnboardingFlowScreen(resumeFrom: snapshot.data!.status);
       },

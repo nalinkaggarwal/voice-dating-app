@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 
+import '../../../shared/widgets/voice_clip_player.dart';
 import '../application/onboarding_state.dart';
 
 enum _RecordingPhase { requestingPermission, permissionDenied, idle, recording, recorded }
@@ -20,10 +21,8 @@ class VoiceRecordingStep extends StatefulWidget {
 
 class _VoiceRecordingStepState extends State<VoiceRecordingStep> {
   final _recorder = AudioRecorder();
-  final _player = AudioPlayer();
   _RecordingPhase _phase = _RecordingPhase.requestingPermission;
   String? _recordingPath;
-  bool _isPlaying = false;
 
   @override
   void initState() {
@@ -36,7 +35,6 @@ class _VoiceRecordingStepState extends State<VoiceRecordingStep> {
   @override
   void dispose() {
     _recorder.dispose();
-    _player.dispose();
     super.dispose();
   }
 
@@ -65,25 +63,10 @@ class _VoiceRecordingStepState extends State<VoiceRecordingStep> {
     });
   }
 
-  Future<void> _togglePlayback() async {
-    if (_recordingPath == null) return;
-    if (_isPlaying) {
-      await _player.stop();
-      setState(() => _isPlaying = false);
-      return;
-    }
-    await _player.play(DeviceFileSource(_recordingPath!));
-    setState(() => _isPlaying = true);
-    _player.onPlayerComplete.first.then((_) {
-      if (mounted) setState(() => _isPlaying = false);
-    });
-  }
-
   void _reRecord() {
     setState(() {
       _phase = _RecordingPhase.idle;
       _recordingPath = null;
-      _isPlaying = false;
     });
   }
 
@@ -126,11 +109,7 @@ class _VoiceRecordingStepState extends State<VoiceRecordingStep> {
                 label: const Text('Stop'),
               ),
             if (_phase == _RecordingPhase.recorded) ...[
-              IconButton.filled(
-                onPressed: _togglePlayback,
-                icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
-                iconSize: 40,
-              ),
+              VoiceClipPlayer(source: DeviceFileSource(_recordingPath!)),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,

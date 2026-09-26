@@ -20,7 +20,11 @@ class ApiClient {
   final http.Client _http;
   final TokenStorage _tokenStorage;
 
-  Uri _uri(String path) => Uri.parse('${AppConfig.apiBaseUrl}$path');
+  // Backend applies a global 'v1' prefix to every route except its bare
+  // root health check (main.ts's setGlobalPrefix) -- prepended once here
+  // so no call site (auth, profile, discovery, etc.) needs to know about
+  // versioning individually.
+  Uri _uri(String path) => Uri.parse('${AppConfig.apiBaseUrl}/v1$path');
 
   Future<Map<String, dynamic>> post(
     String path, {

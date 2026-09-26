@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../auth/application/auth_state.dart';
+import '../../discovery/presentation/discovery_home_screen.dart';
 
 class OnboardingCompleteStep extends StatelessWidget {
   const OnboardingCompleteStep({super.key});
@@ -10,7 +11,7 @@ class OnboardingCompleteStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("You're all set!"),
+        title: const Text('You\'re all set!'),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -18,13 +19,26 @@ class OnboardingCompleteStep extends StatelessWidget {
           ),
         ],
       ),
-      body: const Center(
+      body: Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Your profile is ready. Discovery (matching on voice + preferences) '
-            'lands in the next work package.',
-            textAlign: TextAlign.center,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Your profile is ready. Time to meet your first match.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const DiscoveryHomeScreen()),
+                  );
+                },
+                child: const Text('Start discovering'),
+              ),
+            ],
           ),
         ),
       ),
