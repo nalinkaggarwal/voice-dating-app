@@ -35,11 +35,17 @@ class DiscoveryEntry {
 }
 
 class DiscoveryDecisionResult {
-  const DiscoveryDecisionResult({required this.matched});
+  const DiscoveryDecisionResult({required this.matched, this.connectionId});
 
   factory DiscoveryDecisionResult.fromJson(Map<String, dynamic> json) {
-    return DiscoveryDecisionResult(matched: json['matched'] as bool? ?? false);
+    return DiscoveryDecisionResult(
+      matched: json['matched'] as bool? ?? false,
+      connectionId: json['connectionId'] as String?,
+    );
   }
 
   final bool matched;
+  /// Present on an INTERESTED decision (null for PASS) -- addresses the
+  /// Connection for everything past this point (reveal, Live Snap).
+  final String? connectionId;
 }

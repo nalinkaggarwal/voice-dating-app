@@ -111,20 +111,27 @@ export class DiscoveryService {
 
     if (count === 0) {
       // Already decided (this call lost the race, or is a plain retry) --
-      // return the existing state rather than re-deciding or erroring.
+      // return the existing state rather than re-deciding or erroring. No
+      // connectionId here: the original call that actually processed the
+      // decision already returned it to its caller; a retry landing after
+      // that has nothing new to tell the client, and re-deriving it would
+      // mean calling createSuggestion again, which the "no new side
+      // effects on retry" contract below guards against.
       const existing = await this.prisma.discoveryQueueEntry.findUnique({ where: { id: entryId } });
-      return { entry: existing, matched: false };
+      return { entry: existing, matched: false, connectionId: null };
     }
 
     let matched = false;
+    let connectionId: string | null = null;
     if (decision === DecisionType.INTERESTED) {
       const connection = await this.connections.createSuggestion(userId, entry.candidateId);
+      connectionId = connection.id;
       const updated = await this.connections.markInterested(userId, connection.id);
       matched = updated.status === 'MUTUAL_INTEREST';
     }
     // PASS: no Connection side effects at all, per the brief.
 
     const updatedEntry = await this.prisma.discoveryQueueEntry.findUnique({ where: { id: entryId } });
-    return { entry: updatedEntry, matched };
+    return { entry: updatedEntry, matched, connectionId };
   }
 }

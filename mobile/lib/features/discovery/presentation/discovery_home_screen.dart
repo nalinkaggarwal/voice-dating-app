@@ -14,29 +14,38 @@ import '../domain/discovery_entry.dart';
 /// stack of cards, no browsing ahead -- just the next undecided entry,
 /// same shape as the backend's queue.
 class DiscoveryHomeScreen extends StatelessWidget {
-  const DiscoveryHomeScreen({super.key});
+  const DiscoveryHomeScreen({super.key, required this.currentUserId});
+
+  /// Threaded down from main.dart's single already-fetched User -- needed
+  /// to pass along to MatchScreen/RevealScreen once a decide() call
+  /// matches, rather than each downstream screen re-fetching it.
+  final String currentUserId;
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => DiscoveryState()..loadToday(),
-      child: const _DiscoveryBody(),
+      child: _DiscoveryBody(currentUserId: currentUserId),
     );
   }
 }
 
 class _DiscoveryBody extends StatelessWidget {
-  const _DiscoveryBody();
+  const _DiscoveryBody({required this.currentUserId});
+
+  final String currentUserId;
 
   Future<void> _handleDecision(
     BuildContext context,
     DiscoveryState state,
     DiscoveryDecision decision,
   ) async {
-    final matched = await state.decide(decision);
-    if (matched && context.mounted) {
+    final result = await state.decide(decision);
+    if (result.matched && result.connectionId != null && context.mounted) {
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const MatchScreen()),
+        MaterialPageRoute(
+          builder: (_) => MatchScreen(connectionId: result.connectionId!, currentUserId: currentUserId),
+        ),
       );
     }
   }

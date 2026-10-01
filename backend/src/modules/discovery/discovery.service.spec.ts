@@ -64,6 +64,7 @@ describe('DiscoveryService', () => {
       expect(connections.createSuggestion).not.toHaveBeenCalled();
       expect(connections.markInterested).not.toHaveBeenCalled();
       expect(result.matched).toBe(false);
+      expect(result.connectionId).toBeNull();
     });
 
     it('INTERESTED updates the entry, creates + marks the Connection, and reports matched:false when only one side is interested', async () => {
@@ -81,6 +82,7 @@ describe('DiscoveryService', () => {
       expect(connections.createSuggestion).toHaveBeenCalledWith('user-1', 'candidate-1');
       expect(connections.markInterested).toHaveBeenCalledWith('user-1', 'connection-1');
       expect(result.matched).toBe(false); // markInterested mock returns status SUGGESTED
+      expect(result.connectionId).toBe('connection-1');
     });
 
     it('reports matched:true when this call is the one that flips the Connection to MUTUAL_INTEREST', async () => {
@@ -96,6 +98,7 @@ describe('DiscoveryService', () => {
 
       const result = await service.decide('user-1', 'entry-1', DecisionType.INTERESTED);
       expect(result.matched).toBe(true);
+      expect(result.connectionId).toBe('connection-1');
     });
 
     it('is idempotent: a second decide() call on an already-decided entry is a no-op that returns existing state and matched:false, never re-fires side effects', async () => {
@@ -127,6 +130,7 @@ describe('DiscoveryService', () => {
       expect(connections.markInterested).toHaveBeenCalledTimes(1);
       expect(result.entry?.decision).toBe(DecisionType.INTERESTED);
       expect(result.matched).toBe(false);
+      expect(result.connectionId).toBeNull();
     });
 
     it('a race between two concurrent decide() calls only lets ONE fire Connection side effects', async () => {

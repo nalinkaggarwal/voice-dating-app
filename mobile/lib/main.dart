@@ -74,9 +74,9 @@ class _AppRootState extends State<_AppRoot> {
         // Discovery -- OnboardingFlowScreen's own resumeFrom mapping only
         // matters for a user still mid-onboarding.
         if (snapshot.data!.status == UserStatus.active) {
-          return const DiscoveryHomeScreen();
+          return DiscoveryHomeScreen(currentUserId: snapshot.data!.id);
         }
-        return OnboardingFlowScreen(resumeFrom: snapshot.data!.status);
+        return OnboardingFlowScreen(resumeFrom: snapshot.data!.status, currentUserId: snapshot.data!.id);
       },
     );
   }

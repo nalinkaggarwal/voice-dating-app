@@ -1,9 +1,25 @@
-import { Controller } from '@nestjs/common';
+import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ConnectionsService } from './connections.service.js';
+import { AccessTokenGuard } from '../identity/guards/access-token.guard.js';
+import { CurrentUserId } from '../identity/decorators/current-user.decorator.js';
 
-// WP1 stub -- no routes yet. ConnectionsService's method signatures are
-// already final (see its docstring); routes get wired to them in WP3.
+@UseGuards(AccessTokenGuard)
 @Controller('connections')
 export class ConnectionsController {
   constructor(private readonly connectionsService: ConnectionsService) {}
+
+  @Get(':id/reveal')
+  getReveal(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.connectionsService.getReveal(userId, id);
+  }
+
+  @Post(':id/decline')
+  decline(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.connectionsService.decline(userId, id);
+  }
+
+  @Post(':id/snap/confirm')
+  confirmSnap(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.connectionsService.markSnapDone(userId, id);
+  }
 }

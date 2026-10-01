@@ -113,6 +113,8 @@ model Connection {
   userA User @relation("ConnectionUserA", fields: [userAId], references: [id])
   userB User @relation("ConnectionUserB", fields: [userBId], references: [id])
 
+  liveSnapSessions LiveSnapSession[]
+
   // One row per unordered pair -- ConnectionsService is responsible for
   // always calling with a canonical (lower-id-first) ordering so a pair
   // can never get two rows the two possible orderings.
@@ -128,6 +130,28 @@ enum ConnectionStatus {
   ACTIVE
   BLOCKED
   CLOSED
+}
+
+// WP4: one row per Live Snap call attempt for a Connection -- plural by
+// design, not unique on connectionId, since a dropped call can retry.
+// Only the latest row for a connectionId matters for status checks.
+model LiveSnapSession {
+  id           String                @id @default(uuid())
+  connectionId String
+  status       LiveSnapSessionStatus @default(RINGING)
+  startedAt    DateTime              @default(now())
+  endedAt      DateTime?
+
+  connection Connection @relation(fields: [connectionId], references: [id])
+
+  @@index([connectionId])
+}
+
+enum LiveSnapSessionStatus {
+  RINGING
+  ACTIVE
+  ENDED
+  MISSED
 }
 
 // ── Auth support models (not in the brief's schema block) ──────────────

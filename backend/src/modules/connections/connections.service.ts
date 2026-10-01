@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException, NotImplementedException } from '@nestjs/common';
 import type { Connection } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { StorageService } from '../../shared/storage/storage.service.js';
 
 /** Lower-UUID-first ordering -- the ONE place this ordering rule is
  * decided, so createSuggestion/markInterested/every future caller agrees
@@ -30,7 +31,10 @@ function canonicalPair(userAId: string, userBId: string): [string, string] {
  */
 @Injectable()
 export class ConnectionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   // Create a SUGGESTED connection from the discovery/matching pipeline.
   // Idempotent on (userAId, userBId) via upsert against the schema's own
@@ -83,19 +87,109 @@ export class ConnectionsService {
     });
   }
 
-  // TODO(WP3): either party declines -> status CLOSED. Idempotent:
-  // closing an already-closed connection is a no-op success.
-  async decline(_userId: string, _connectionId: string): Promise<never> {
-    throw new NotImplementedException('decline lands in WP3');
+  // Either party declines -> status CLOSED. The mutation itself is a
+  // guarded updateMany (not read-then-write) so a double-decline race
+  // between both parties can't do anything worse than both setting the
+  // same terminal state -- same "guard the UPDATE, don't just guard the
+  // read" philosophy as advanceUserStatus/decide(). The upfront read is
+  // only for the NotFound/Forbidden authorization checks, which need a
+  // row in hand regardless.
+  async decline(userId: string, connectionId: string): Promise<Connection> {
+    const connection = await this.prisma.connection.findUnique({ where: { id: connectionId } });
+    if (!connection) throw new NotFoundException('Connection not found');
+    if (connection.userAId !== userId && connection.userBId !== userId) {
+      throw new ForbiddenException('You are not a party to this connection');
+    }
+    await this.prisma.connection.updateMany({
+      where: { id: connectionId, status: { notIn: ['CLOSED', 'BLOCKED'] } },
+      data: { status: 'CLOSED' },
+    });
+    return (await this.prisma.connection.findUnique({ where: { id: connectionId } }))!;
   }
 
-  // TODO(WP3, alongside WP4's Live Snap work): userId completes their
-  // liveness check for this connection. Transaction must: set this
-  // user's *SnapDone flag, and if both are now true, transition
-  // MUTUAL_INTEREST -> AUTHENTICATED_MATCH (SNAP_PENDING is the interim
-  // status while only one side has completed theirs).
-  async markSnapDone(_userId: string, _connectionId: string): Promise<never> {
-    throw new NotImplementedException('markSnapDone lands in WP4');
+  // userId confirms their side of a completed Live Snap call for this
+  // connection. Mirrors markInterested's shape exactly (set this user's
+  // flag, re-check both inside the same transaction, conditionally
+  // transition) but for the SnapDone flags instead of Interested:
+  // MUTUAL_INTEREST -> SNAP_PENDING on the first confirmation,
+  // SNAP_PENDING -> AUTHENTICATED_MATCH once both are in.
+  //
+  // Returns `matched: true` only on the call that actually flips the
+  // status to AUTHENTICATED_MATCH -- same "only the flipping call gets
+  // true" rule discovery.service.ts's decide() uses, so a client retry
+  // (network flake after a successful confirm) can never re-show the
+  // "you're authenticated" screen. Unlike decide(), there's no outer
+  // write-once entity protecting against that retry here, so the
+  // protection has to live in this method itself: a connection already
+  // at AUTHENTICATED_MATCH/ACTIVE short-circuits to a harmless no-op
+  // instead of re-running the flag logic. Anything before MUTUAL_INTEREST
+  // or a terminal CLOSED/BLOCKED connection is a genuine misuse and
+  // throws, rather than silently setting a flag that can never do
+  // anything.
+  async markSnapDone(
+    userId: string,
+    connectionId: string,
+  ): Promise<{ connection: Connection; matched: boolean }> {
+    return this.prisma.$transaction(async (tx) => {
+      const connection = await tx.connection.findUnique({ where: { id: connectionId } });
+      if (!connection) throw new NotFoundException('Connection not found');
+      if (connection.userAId !== userId && connection.userBId !== userId) {
+        throw new ForbiddenException('You are not a party to this connection');
+      }
+
+      if (connection.status === 'AUTHENTICATED_MATCH' || connection.status === 'ACTIVE') {
+        return { connection, matched: false };
+      }
+      if (connection.status !== 'MUTUAL_INTEREST' && connection.status !== 'SNAP_PENDING') {
+        throw new ForbiddenException(`Cannot confirm Live Snap while status is ${connection.status}`);
+      }
+
+      const isUserA = connection.userAId === userId;
+      const updated = await tx.connection.update({
+        where: { id: connectionId },
+        data: isUserA ? { userASnapDone: true } : { userBSnapDone: true },
+      });
+
+      if (updated.userASnapDone && updated.userBSnapDone) {
+        const matchedConnection = await tx.connection.update({
+          where: { id: connectionId },
+          data: { status: 'AUTHENTICATED_MATCH' },
+        });
+        return { connection: matchedConnection, matched: true };
+      }
+      if (updated.status === 'MUTUAL_INTEREST') {
+        const pending = await tx.connection.update({
+          where: { id: connectionId },
+          data: { status: 'SNAP_PENDING' },
+        });
+        return { connection: pending, matched: false };
+      }
+      return { connection: updated, matched: false };
+    });
+  }
+
+  // The matched user's name + photo, revealed for the first time now that
+  // there's a real mutual match -- "hear before you see" only governs the
+  // pre-decision discovery payload (TodayQueueEntryView, see
+  // discovery.service.ts), not what's shown after both sides are already
+  // in. 403 before MUTUAL_INTEREST: nothing to reveal yet.
+  async getReveal(
+    userId: string,
+    connectionId: string,
+  ): Promise<{ displayName: string | null; photoUrl: string | null }> {
+    const connection = await this.prisma.connection.findUnique({ where: { id: connectionId } });
+    if (!connection) throw new NotFoundException('Connection not found');
+    if (connection.userAId !== userId && connection.userBId !== userId) {
+      throw new ForbiddenException('You are not a party to this connection');
+    }
+    if (connection.status === 'SUGGESTED') {
+      throw new ForbiddenException('Not matched yet');
+    }
+
+    const otherUserId = connection.userAId === userId ? connection.userBId : connection.userAId;
+    const profile = await this.prisma.profile.findUnique({ where: { userId: otherUserId } });
+    const photoUrl = profile?.photoUrl ? await this.storage.getDownloadUrl(profile.photoUrl) : null;
+    return { displayName: profile?.displayName ?? null, photoUrl };
   }
 
   // TODO(WP3+): moderation/trust-safety escalation -> status BLOCKED.

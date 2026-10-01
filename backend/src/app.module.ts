@@ -11,6 +11,7 @@ import { ProfileModule } from './modules/profile/profile.module.js';
 import { AiProfileModule } from './modules/ai-profile/ai-profile.module.js';
 import { DiscoveryModule } from './modules/discovery/discovery.module.js';
 import { ConnectionsModule } from './modules/connections/connections.module.js';
+import { LiveSnapModule } from './modules/live-snap/live-snap.module.js';
 import { MessagingModule } from './modules/messaging/messaging.module.js';
 import { RealtimeModule } from './modules/realtime/realtime.module.js';
 import { ModerationModule } from './modules/moderation/moderation.module.js';
@@ -29,6 +30,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     AiProfileModule,
     DiscoveryModule,
     ConnectionsModule,
+    LiveSnapModule,
     MessagingModule,
     RealtimeModule,
     ModerationModule,

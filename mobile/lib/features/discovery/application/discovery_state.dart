@@ -33,13 +33,15 @@ class DiscoveryState extends ChangeNotifier {
   }
 
   /// Decides on the current entry and removes it from the local queue.
-  /// Returns whether this decision resulted in a mutual match -- the
-  /// presentation layer uses this to decide whether to show the "You
-  /// matched!" screen. Returns false (and leaves the queue untouched) on
-  /// a network/API failure -- errorMessage carries the reason.
-  Future<bool> decide(DiscoveryDecision decision) async {
+  /// Returns the full result (matched + connectionId) -- the presentation
+  /// layer uses `matched` to decide whether to show the "You matched!"
+  /// screen, and `connectionId` to address it for Reveal/Live Snap past
+  /// that point. Returns matched:false/connectionId:null on a network/API
+  /// failure, leaving the queue untouched -- errorMessage carries the
+  /// reason.
+  Future<DiscoveryDecisionResult> decide(DiscoveryDecision decision) async {
     final entry = currentEntry;
-    if (entry == null) return false;
+    if (entry == null) return const DiscoveryDecisionResult(matched: false);
 
     isLoading = true;
     errorMessage = null;
@@ -47,10 +49,10 @@ class DiscoveryState extends ChangeNotifier {
     try {
       final result = await _repository.decide(entry.id, decision);
       _queue = _queue.where((e) => e.id != entry.id).toList();
-      return result.matched;
+      return result;
     } on AppException catch (e) {
       errorMessage = e.message;
-      return false;
+      return const DiscoveryDecisionResult(matched: false);
     } finally {
       isLoading = false;
       notifyListeners();

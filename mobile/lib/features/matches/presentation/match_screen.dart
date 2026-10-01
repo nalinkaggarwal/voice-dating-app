@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 
-/// Minimal mutual-match confirmation, shown right after a decide() call
-/// flips a Connection to MUTUAL_INTEREST. Deliberately thin per the
-/// brief -- the full mutual-reveal (seeing who it was) / Live Snap / chat
-/// experience is WP4, not this one. No name or photo here either, same
+import '../../reveal/presentation/reveal_screen.dart';
+
+/// Mutual-match confirmation, shown right after a decide() call flips a
+/// Connection to MUTUAL_INTEREST. Still no name or photo here -- same
 /// "hear before you see" rule that governs the discovery card itself --
-/// the backend doesn't send candidate identity to the client at all yet,
-/// so there is nothing this screen could show even if it wanted to.
+/// but WP4 wires the CTA forward into Mutual Reveal (name/photo) and then
+/// Live Snap (a live video check) rather than just dismissing.
 class MatchScreen extends StatelessWidget {
-  const MatchScreen({super.key});
+  const MatchScreen({super.key, required this.connectionId, required this.currentUserId});
+
+  final String connectionId;
+  final String currentUserId;
 
   @override
   Widget build(BuildContext context) {
@@ -24,13 +27,17 @@ class MatchScreen extends StatelessWidget {
               Text('You matched!', style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 8),
               const Text(
-                'You\'re both interested. Their full reveal comes later.',
+                'You\'re both interested. See who it is next.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
               FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Back to Discovery'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => RevealScreen(connectionId: connectionId, currentUserId: currentUserId),
+                  ),
+                ),
+                child: const Text('See your match'),
               ),
             ],
           ),

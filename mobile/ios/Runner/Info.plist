@@ -27,7 +27,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Lolly needs your microphone to record your voice intro.</string>
+	<string>Lolly needs your microphone to record your voice intro and for Live Snap calls.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Lolly needs your camera for the Live Snap video call with your match.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Lolly needs access to your photo library to add a profile photo.</string>
 	<key>UIApplicationSceneManifest</key>

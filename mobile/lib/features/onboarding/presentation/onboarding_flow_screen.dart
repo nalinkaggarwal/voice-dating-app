@@ -18,11 +18,17 @@ import 'voice_recording_step.dart';
 /// basic-info -> ... -> photo flow in the brief); a user can't skip
 /// ahead because each step's completion is what advances currentStep.
 class OnboardingFlowScreen extends StatelessWidget {
-  const OnboardingFlowScreen({super.key, this.resumeFrom});
+  const OnboardingFlowScreen({super.key, this.resumeFrom, required this.currentUserId});
 
   /// The user's current backend UserStatus, so a returning user resumes
   /// at the right step instead of restarting at basicInfo.
   final UserStatus? resumeFrom;
+
+  /// Only actually needed once OnboardingCompleteStep hands off to
+  /// DiscoveryHomeScreen (WP5's messaging needs it there) -- threaded
+  /// through the whole switcher anyway since main.dart already has it on
+  /// hand from the same User fetch resumeFrom comes from.
+  final String currentUserId;
 
   @override
   Widget build(BuildContext context) {
@@ -32,13 +38,15 @@ class OnboardingFlowScreen extends StatelessWidget {
         if (resumeFrom != null) state.resumeFrom(resumeFrom!);
         return state;
       },
-      child: const _OnboardingStepSwitcher(),
+      child: _OnboardingStepSwitcher(currentUserId: currentUserId),
     );
   }
 }
 
 class _OnboardingStepSwitcher extends StatelessWidget {
-  const _OnboardingStepSwitcher();
+  const _OnboardingStepSwitcher({required this.currentUserId});
+
+  final String currentUserId;
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +65,7 @@ class _OnboardingStepSwitcher extends StatelessWidget {
       case OnboardingStep.photo:
         return const PhotoUploadStep();
       case OnboardingStep.complete:
-        return const OnboardingCompleteStep();
+        return OnboardingCompleteStep(currentUserId: currentUserId);
     }
   }
 }
