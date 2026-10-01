@@ -9,5 +9,6 @@ import { RealtimeGateway } from './realtime.gateway.js';
     LiveSnapModule, // needs LiveSnapService for Live Snap session status updates
   ],
   providers: [RealtimeGateway],
+  exports: [RealtimeGateway], // MessagingService broadcasts message:* events through it
 })
 export class RealtimeModule {}

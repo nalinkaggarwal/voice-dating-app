@@ -4,14 +4,8 @@ import type { Queue } from 'bullmq';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { StorageService } from '../../shared/storage/storage.service.js';
 import { advanceUserStatus } from '../../shared/onboarding/advance-status.util.js';
+import { audioExtensionForContentType } from '../../shared/storage/audio-extension.util.js';
 import { TRANSCRIPTION_QUEUE, type TranscriptionJobData } from './queue.constants.js';
-
-const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
-  'audio/webm': 'webm',
-  'audio/mp4': 'm4a',
-  'audio/mpeg': 'mp3',
-  'audio/wav': 'wav',
-};
 
 @Injectable()
 export class AiProfileService {
@@ -22,7 +16,7 @@ export class AiProfileService {
   ) {}
 
   async requestVoiceUploadUrl(contentType: string): Promise<{ uploadUrl: string; key: string }> {
-    const extension = EXTENSION_BY_CONTENT_TYPE[contentType] ?? 'bin';
+    const extension = audioExtensionForContentType(contentType);
     const key = this.storage.generateKey('voice', extension);
     const uploadUrl = await this.storage.getUploadUrl(key, contentType);
     return { uploadUrl, key };

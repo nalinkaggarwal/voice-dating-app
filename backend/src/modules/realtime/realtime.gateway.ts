@@ -22,16 +22,27 @@ interface LiveSnapSignalPayload extends LiveSnapRoomPayload {
   payload: unknown;
 }
 
+// Separate room namespaces for the same connectionId -- liveSnapRoom's
+// 2-person-room size check (see handleJoin) would be wrong the moment a
+// socket is ALSO sitting in that same room just for chat delivery (WP5).
+// Prefixing keeps the two concerns from ever sharing a room.
 function liveSnapRoom(connectionId: string): string {
   return `liveSnap:${connectionId}`;
 }
 
-// WP1 auth skeleton + WP4 Live Snap WebRTC signaling relay. Every
+function chatRoom(connectionId: string): string {
+  return `chat:${connectionId}`;
+}
+
+// WP1 skeleton + WP4 Live Snap signaling + WP5 chat delivery. Every
 // liveSnap:* event re-verifies the authenticated socket's userId is a
 // party to the given connectionId -- never trusts the client's own claim
 // of which connection it's calling about, same as every REST route in
 // this app re-checks party membership itself rather than trusting a
-// prior check.
+// prior check. Chat delivery (message:* events) is broadcast-only here --
+// see MessagingService, which is the one place a message actually gets
+// sent/persisted (REST, not a socket event); this gateway only tells
+// already-connected participants it happened in real time.
 @WebSocketGateway({ cors: true })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
@@ -45,20 +56,38 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly liveSnap: LiveSnapService,
   ) {}
 
-  handleConnection(@ConnectedSocket() client: Socket) {
+  async handleConnection(@ConnectedSocket() client: Socket) {
     const token = client.handshake.auth?.token as string | undefined;
     if (!token) {
       this.logger.warn(`Socket ${client.id} connected without a token — disconnecting.`);
       client.disconnect(true);
       return;
     }
+    let userId: string;
     try {
-      const { sub } = this.tokens.verifyAccessToken(token);
-      client.data.userId = sub;
-      this.logger.log(`Socket ${client.id} authenticated as user ${sub}`);
+      ({ sub: userId } = this.tokens.verifyAccessToken(token));
+      client.data.userId = userId;
+      this.logger.log(`Socket ${client.id} authenticated as user ${userId}`);
     } catch {
       this.logger.warn(`Socket ${client.id} presented an invalid/expired token — disconnecting.`);
       client.disconnect(true);
+      return;
+    }
+
+    // Join every chat room this user currently has standing (WP5) --
+    // ambient, not opt-in per conversation, so a message:new broadcast
+    // reaches them for ANY active match while the app is open, not just
+    // whichever thread they happen to have on screen. No live-preview
+    // delivery is possible before this connects, though -- see the
+    // "no push notifications yet" caveat in the README.
+    const connections = await this.prisma.connection.findMany({
+      where: {
+        status: { in: ['AUTHENTICATED_MATCH', 'ACTIVE'] },
+        OR: [{ userAId: userId }, { userBId: userId }],
+      },
+    });
+    for (const connection of connections) {
+      await client.join(chatRoom(connection.id));
     }
   }
 
@@ -133,5 +162,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     await client.leave(liveSnapRoom(body.connectionId));
     client.data.liveSnapRoom = undefined;
     await this.liveSnap.endSession(body.sessionId);
+  }
+
+  // Called by MessagingService after a REST call persists a message/marks
+  // delivered/read -- sending itself is REST-only (consistent with every
+  // other business action in this app, Live Snap's start/confirm/decline
+  // included); sockets here are purely "tell whoever's already connected
+  // this just happened." A client that reconnects after missing one of
+  // these falls back to GET .../messages?since=... -- see MessagingState
+  // on the mobile side -- rather than relying on this broadcast alone.
+  broadcastToChat(connectionId: string, event: string, payload: unknown): void {
+    this.server.to(chatRoom(connectionId)).emit(event, payload);
   }
 }

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../shared/widgets/voice_clip_player.dart';
 import '../../auth/application/auth_state.dart';
 import '../../matches/presentation/match_screen.dart';
+import '../../messaging/presentation/conversations_list_screen.dart';
 import '../application/discovery_state.dart';
 import '../domain/discovery_entry.dart';
 
@@ -16,9 +17,9 @@ import '../domain/discovery_entry.dart';
 class DiscoveryHomeScreen extends StatelessWidget {
   const DiscoveryHomeScreen({super.key, required this.currentUserId});
 
-  /// Threaded down from main.dart's single already-fetched User -- needed
-  /// to pass along to MatchScreen/RevealScreen once a decide() call
-  /// matches, rather than each downstream screen re-fetching it.
+  /// Needed to tell "my message" from "their message" in a thread --
+  /// threaded down from main.dart's single already-fetched User rather
+  /// than each messaging screen re-fetching it independently.
   final String currentUserId;
 
   @override
@@ -58,6 +59,13 @@ class _DiscoveryBody extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Discovery'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            tooltip: 'Messages',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => ConversationsListScreen(currentUserId: currentUserId)),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => context.read<AuthState>().logout(),
