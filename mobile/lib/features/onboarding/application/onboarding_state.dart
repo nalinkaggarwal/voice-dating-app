@@ -20,12 +20,14 @@ class OnboardingState extends ChangeNotifier {
   String? errorMessage;
 
   /// Resumes at the right step for a returning user instead of always
-  /// restarting at basicInfo. One real gap: if the backend status is
-  /// VOICE_RECORDED (recording uploaded, but the app was killed before
-  /// the AI review was finalized), there's no "fetch my most recent
-  /// voice answer" endpoint to resume the review screen with -- falls
-  /// back to re-recording rather than resuming a review with no known
-  /// voiceAnswerId. Documented limitation, not a silent bug.
+  /// restarting at basicInfo. VOICE_RECORDED (recording uploaded, but the
+  /// app was killed before the AI review was finalized) defaults to
+  /// re-recording -- the only safe synchronous guess, since there's no
+  /// voiceAnswerId in local state to resume a review with -- then
+  /// upgrades to the review screen once _resumeVoiceReview's fetch of
+  /// "my most recent voice answer" lands (fire-and-forget: this method
+  /// itself stays synchronous so ChangeNotifierProvider's `create` can
+  /// call it directly).
   void resumeFrom(UserStatus status) {
     currentStep = switch (status) {
       UserStatus.accountCreated => OnboardingStep.basicInfo,
@@ -38,6 +40,28 @@ class OnboardingState extends ChangeNotifier {
       UserStatus.active => OnboardingStep.complete,
     };
     notifyListeners();
+    if (status == UserStatus.voiceRecorded) {
+      unawaited(_resumeVoiceReview());
+    }
+  }
+
+  /// Best-effort upgrade from the voiceRecording fallback above to the
+  /// actual review screen, with whatever claims/status the backend
+  /// already has. Any failure (no voice answer on record, network error)
+  /// just leaves the user on the re-recording step resumeFrom already
+  /// set -- re-recording was always a safe fallback, never a dead end.
+  Future<void> _resumeVoiceReview() async {
+    try {
+      voiceAnswer = await _repository.getLatestVoiceAnswer();
+      currentStep = OnboardingStep.aiReview;
+      if (voiceAnswer!.status != VoiceAnswerStatus.draftReady &&
+          voiceAnswer!.status != VoiceAnswerStatus.failed) {
+        _startPollingVoiceAnswer();
+      }
+      notifyListeners();
+    } catch (_) {
+      // Stay on voiceRecording -- see doc comment above.
+    }
   }
 
   VoiceAnswer? voiceAnswer;

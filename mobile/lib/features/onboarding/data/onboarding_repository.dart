@@ -81,6 +81,13 @@ class OnboardingRepository {
     return VoiceAnswer.fromJson(response);
   }
 
+  /// Lets a resumed session find its voice answer without already knowing
+  /// its id -- see OnboardingState.resumeFrom for why that matters.
+  Future<VoiceAnswer> getLatestVoiceAnswer() async {
+    final response = await _api.get('/ai-profile/voice/latest', authenticated: true);
+    return VoiceAnswer.fromJson(response);
+  }
+
   Future<void> editClaim(String claimId, String text) {
     return _api.post('/ai-profile/claims/$claimId/edit', authenticated: true, body: {'text': text});
   }

@@ -12,6 +12,7 @@ describe('AiProfileService', () => {
       voiceAnswer: {
         create: vi.fn(async ({ data }: any) => ({ id: 'va-1', ...data })),
         findUnique: vi.fn(),
+        findFirst: vi.fn(),
         update: vi.fn(async ({ data }: any) => ({ id: 'va-1', ...data })),
       },
       profileClaim: {
@@ -68,6 +69,24 @@ describe('AiProfileService', () => {
     it('throws NotFoundException for a nonexistent voice answer', async () => {
       prisma.voiceAnswer.findUnique.mockResolvedValueOnce(null);
       await expect(service.getVoiceAnswer('user-1', 'nope')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getLatestVoiceAnswer', () => {
+    it('returns the caller\'s most recent voice answer', async () => {
+      prisma.voiceAnswer.findFirst.mockResolvedValueOnce({ id: 'va-2', userId: 'user-1', claims: [] });
+      const result = await service.getLatestVoiceAnswer('user-1');
+      expect(result.id).toBe('va-2');
+      expect(prisma.voiceAnswer.findFirst).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        orderBy: { createdAt: 'desc' },
+        include: { claims: { where: { discarded: false }, orderBy: { createdAt: 'asc' } } },
+      });
+    });
+
+    it('throws NotFoundException when the caller has never recorded one', async () => {
+      prisma.voiceAnswer.findFirst.mockResolvedValueOnce(null);
+      await expect(service.getLatestVoiceAnswer('user-1')).rejects.toThrow(NotFoundException);
     });
   });
 

@@ -48,7 +48,7 @@ npm run start:dev
 
 Tests: `npm test` (Vitest, all offline — Prisma/OTP-delivery/queues are
 mocked, no live DB or Redis needed). Lint: `npm run lint`. Type-check:
-`npx tsc --noEmit`. **129 tests, all passing** as of WP3.
+`npx tsc --noEmit`. **131 tests, all passing** as of WP3.
 
 ### API versioning
 
@@ -88,6 +88,7 @@ POST /profile/photo/complete           { key }          -> chains PHOTO_UPLOADED
 
 POST /ai-profile/voice/upload-url      { contentType } -> { uploadUrl, key }
 POST /ai-profile/voice/complete        { key }          -> creates VoiceAnswer, enqueues transcription
+GET  /ai-profile/voice/latest          -> caller's most recent VoiceAnswer (resume support, no id needed)
 GET  /ai-profile/voice/:id             -> current status + claims
 POST /ai-profile/claims/:id/edit       { text }
 POST /ai-profile/claims/:id/approve
@@ -280,11 +281,14 @@ signed URL) both use it, rather than duplicating play/pause/dispose
 logic. Photo picking uses `image_picker`. State management is `provider`
 (`ChangeNotifier`s: `AuthState`, `OnboardingState`, `DiscoveryState`).
 
-One known, documented gap in `OnboardingState.resumeFrom`: if the app is
-killed after a recording uploads but before the AI review is finalized
-(`VOICE_RECORDED` status), there's no "fetch my most recent voice answer"
-endpoint yet to resume the review screen with a known `voiceAnswerId` —
-it falls back to the recording step (re-record) rather than resuming.
+`OnboardingState.resumeFrom`'s one-time gap is closed: if the app is killed
+after a recording uploads but before the AI review is finalized
+(`VOICE_RECORDED` status), `GET /ai-profile/voice/latest` (added for exactly
+this) fetches the caller's most recent `VoiceAnswer` with no `voiceAnswerId`
+needed. `resumeFrom` still synchronously defaults to the recording step
+first — the only safe guess without an extra round-trip — then upgrades to
+the review screen once that fetch lands; any failure (no voice answer on
+record, network error) just leaves the safe default in place.
 
 ## CI
 

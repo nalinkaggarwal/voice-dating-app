@@ -21,6 +21,14 @@ export class AiProfileController {
     return this.aiProfileService.completeVoiceUpload(userId, dto.key);
   }
 
+  // Must stay registered before `voice/:voiceAnswerId` -- Nest/Express
+  // matches routes in declaration order, so a specific path has to come
+  // first or "latest" would be swallowed as a :voiceAnswerId value.
+  @Get('voice/latest')
+  getLatestVoiceAnswer(@CurrentUserId() userId: string) {
+    return this.aiProfileService.getLatestVoiceAnswer(userId);
+  }
+
   @Get('voice/:voiceAnswerId')
   getVoiceAnswer(@CurrentUserId() userId: string, @Param('voiceAnswerId') voiceAnswerId: string) {
     return this.aiProfileService.getVoiceAnswer(userId, voiceAnswerId);

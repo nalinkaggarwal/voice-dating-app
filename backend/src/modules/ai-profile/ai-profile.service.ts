@@ -59,6 +59,23 @@ export class AiProfileService {
     return voiceAnswer;
   }
 
+  // Closes the resumeFrom gap documented on the mobile OnboardingState: a
+  // client that was killed after uploading a recording but before finalizing
+  // the review has no voiceAnswerId in local state to resume with. Letting
+  // it ask "my most recent one" instead of "this specific id" is what makes
+  // resuming possible at all.
+  async getLatestVoiceAnswer(userId: string) {
+    const voiceAnswer = await this.prisma.voiceAnswer.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include: { claims: { where: { discarded: false }, orderBy: { createdAt: 'asc' } } },
+    });
+    if (!voiceAnswer) {
+      throw new NotFoundException('No voice answer found');
+    }
+    return voiceAnswer;
+  }
+
   private async getOwnedClaim(userId: string, claimId: string) {
     const claim = await this.prisma.profileClaim.findUnique({
       where: { id: claimId },
