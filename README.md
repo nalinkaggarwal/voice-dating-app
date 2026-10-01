@@ -207,34 +207,43 @@ are stubs — `realtime`, `messaging`, and Live Snap land in WP4.
 
 ## Mobile — running locally
 
-**Not verified on this machine** — no Flutter SDK was available in either
-session this was built in. The code follows standard Flutter/Dart
-conventions and the backend-facing logic was reasoned through carefully
-(including manually tracing a few bugs found and fixed before they'd have
-hit a real build), but `flutter pub get` / `flutter analyze` /
-`flutter test` have not actually been run against it. Treat CI's `mobile`
-job (or your own first local run) as the first real verification.
+**Verified**: `android/` and `ios/` platform folders are scaffolded and
+committed (generated via `flutter create . --project-name lolly --org
+com.lolly`, trimmed to just these two per the stack decision above — drop
+the linux/macos/web/windows folders `flutter create` adds by default if you
+ever regenerate). Required permission declarations are already in place:
+- **Android** (`android/app/src/main/AndroidManifest.xml`): `RECORD_AUDIO`
+- **iOS** (`ios/Runner/Info.plist`): `NSMicrophoneUsageDescription`, `NSPhotoLibraryUsageDescription`
 
-**Before your first run, you need to scaffold the platform folders** —
-`android/` and `ios/` don't exist yet (that needs `flutter create`, which
-needs the SDK):
+`flutter pub get` / `flutter analyze` / `flutter test` / `flutter build apk
+--debug` have all actually been run and pass (10 tests, 0 analyzer errors,
+APK builds). Two `dependency_overrides` in `pubspec.yaml` were needed to get
+there — both documented inline there:
+- `path_provider_foundation: 2.4.1` — newer versions pull in `objective_c`,
+  which requires Dart's experimental native-assets build hooks; those hooks
+  broke outright on a Windows profile path containing a space. Revisit once
+  upstream fixes that, or just drop it on a machine without the issue.
+- `record: ^7.1.1` (bumped from `^5.1.2`) — the old constraint resolved to
+  `record_linux 0.7.2`, which doesn't implement the `record_platform_interface`
+  version `record` itself pulls in (missing `startStream`, mismatched
+  `hasPermission`) — breaks kernel compilation for every platform, not just
+  Linux, since `record`'s own code branches on `Platform.isLinux` and the
+  whole graph has to type-check. Bumping the whole `record` family together
+  keeps its internal versions consistent; the `AudioRecorder`/`RecordConfig`
+  API this app uses didn't change across the bump.
 
 ```bash
 cd mobile
-flutter create . --project-name lolly --org com.lolly    # generates android/, ios/, etc. -- do this FIRST
 flutter pub get
-```
-
-Then add the permission declarations the WP2 packages need (not added
-automatically by `flutter create`):
-- **Android** (`android/app/src/main/AndroidManifest.xml`): `<uses-permission android:name="android.permission.RECORD_AUDIO"/>`
-- **iOS** (`ios/Runner/Info.plist`): `NSMicrophoneUsageDescription`, `NSPhotoLibraryUsageDescription`
-
-```bash
 flutter run --dart-define=API_BASE_URL=http://localhost:3000 --dart-define=APP_ENV=development
 ```
 
-Tests: `flutter test`. Analyze: `flutter analyze`.
+Tests: `flutter test`. Analyze: `flutter analyze`. Build: `flutter build apk --debug`.
+
+No Android emulator/device was available to actually launch the app on this
+machine (Windows Hypervisor Platform firmware setting disabled in BIOS) — a
+successful `flutter build apk` is as far as this got. Treat your own first
+`flutter run` against a real device/emulator as the next verification step.
 
 ### Structure
 
@@ -280,9 +289,11 @@ it falls back to the recording step (re-record) rather than resuming.
 ## CI
 
 `.github/workflows/ci.yml` runs on every push/PR: backend lint +
-type-check + test, and mobile analyze + test (Flutter SDK installed fresh
-in CI — this predates the `flutter create` step above, so the mobile CI
-job will need that added before it can pass; see the mobile section).
+type-check + test, and mobile analyze + test (Flutter SDK installed fresh in
+CI, pinned to 3.47.5 — the version this was actually verified against
+locally, see the mobile section). `android/`/`ios/` being committed means
+CI's checkout already has everything `flutter pub get` needs; no `flutter
+create` step required.
 
 ## Decisions made across sessions (per each kickoff brief's own ask)
 

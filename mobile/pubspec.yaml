@@ -12,7 +12,7 @@ dependencies:
   provider: ^6.1.2
   http: ^1.2.2
   flutter_secure_storage: ^9.2.2
-  record: ^5.1.2
+  record: ^7.1.1
   audioplayers: ^6.1.0
   permission_handler: ^11.3.1
   image_picker: ^1.1.2
@@ -24,6 +24,17 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   mockito: ^5.4.4
   build_runner: ^2.4.13
+
+# path_provider_foundation >=2.5.0 depends on `objective_c`, which requires
+# the (still-experimental) native-assets build hooks. Those hooks break on
+# this machine because the Windows user profile path contains a space
+# (C:\Users\Nalin Kumar Aggarwal\...) -- the hook runner's generated command
+# line isn't quoted, so `flutter test`/`flutter run` fail outright. Pinned
+# to the last version built on the older pigeon-based codegen instead, which
+# needs no native-assets hooks. Safe to drop once upstream fixes the
+# space-in-path bug or we move off this machine.
+dependency_overrides:
+  path_provider_foundation: 2.4.1
 
 flutter:
   uses-material-design: true
