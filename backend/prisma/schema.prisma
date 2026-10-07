@@ -24,6 +24,10 @@ model User {
   // and will presumably set this later; WP3 only needs to KNOW the tier,
   // not how someone became premium.
   tier        UserTier   @default(FREE)
+  // Moderation & Block: minimal admin concept for MVP -- a manually-set
+  // DB flag, not a role/RBAC system. Gates the moderation queue endpoints
+  // only; nothing else in the app checks this.
+  isAdmin     Boolean    @default(false)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -37,6 +41,11 @@ model User {
 
   connectionsAsA Connection[] @relation("ConnectionUserA")
   connectionsAsB Connection[] @relation("ConnectionUserB")
+
+  blocksMade      Block[]  @relation("Blocker")
+  blocksReceived  Block[]  @relation("Blocked")
+  reportsMade     Report[] @relation("Reporter")
+  reportsReceived Report[] @relation("ReportedUser")
 
   // Application-level invariant (Prisma has no portable CHECK constraint):
   // exactly one of email/phone is required at signup, enforced in
@@ -365,4 +374,78 @@ model DiscoveryQueueEntry {
 enum DecisionType {
   PASS
   INTERESTED
+}
+
+// ── Moderation & Block ───────────────────────────────────────────────
+
+// Blocking is stored one-directional (who blocked whom) but enforced
+// bidirectionally everywhere else in the app (see shared/moderation's
+// isBlocked helper) -- if A blocks B, B can't reach A either. The
+// blocker's own "people I've blocked" UI queries blocksMade directly;
+// there's no separate "who blocked me" surface, so blocksReceived exists
+// on User purely for the inverse relation, not because anything queries
+// it today.
+model Block {
+  id        String   @id @default(uuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker User @relation("Blocker", fields: [blockerId], references: [id])
+  blocked User @relation("Blocked", fields: [blockedId], references: [id])
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+enum ReportReason {
+  INAPPROPRIATE_CONTENT
+  HARASSMENT
+  FAKE_PROFILE
+  SAFETY_CONCERN
+  SPAM
+  OTHER
+}
+
+enum ReportContext {
+  PROFILE
+  MESSAGE
+  LIVE_SNAP
+  CONNECTION
+}
+
+enum ReportStatus {
+  PENDING
+  IN_REVIEW
+  ACTIONED
+  DISMISSED
+}
+
+// report() is independent of block() -- reporting someone never
+// implicitly blocks them, and blocking never requires a report on file
+// first. Priority (LIVE_SNAP context or SAFETY_CONCERN reason ranks
+// above everything else PENDING/IN_REVIEW) is computed in
+// ModerationService from these two columns, not stored separately --
+// nothing here can ever drift out of sync with reason/context.
+model Report {
+  id             String        @id @default(uuid())
+  reporterId     String
+  reportedUserId String
+  reason         ReportReason
+  context        ReportContext
+  // id of the message/connection/live-snap-session being reported, if
+  // this report is about a specific one rather than the profile at large.
+  contextId      String?
+  details        String?
+  status         ReportStatus  @default(PENDING)
+  createdAt      DateTime      @default(now())
+  reviewedAt     DateTime?
+  reviewedBy     String?
+  decision       String?
+
+  reporter     User @relation("Reporter", fields: [reporterId], references: [id])
+  reportedUser User @relation("ReportedUser", fields: [reportedUserId], references: [id])
+
+  @@index([status])
+  @@index([reportedUserId])
 }

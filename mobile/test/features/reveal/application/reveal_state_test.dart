@@ -29,7 +29,7 @@ class _FakeRepository extends RevealRepository {
 void main() {
   group('RevealState.load', () {
     test('populates profile on success', () async {
-      const profile = RevealProfile(displayName: 'Jordan', photoUrl: 'https://example.com/jordan.jpg');
+      const profile = RevealProfile(userId: 'user-b', displayName: 'Jordan', photoUrl: 'https://example.com/jordan.jpg');
       final state = RevealState(repository: _FakeRepository(profile: profile));
 
       await state.load('conn-1');

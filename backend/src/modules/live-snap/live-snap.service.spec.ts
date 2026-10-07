@@ -23,6 +23,7 @@ describe('LiveSnapService', () => {
   beforeEach(() => {
     prisma = {
       connection: { findUnique: vi.fn(async () => makeConnection()) },
+      block: { findFirst: vi.fn(async () => null) },
       liveSnapSession: {
         findFirst: vi.fn(async () => null),
         create: vi.fn(async ({ data }: any) => makeSession(data)),
@@ -67,6 +68,11 @@ describe('LiveSnapService', () => {
 
     it('throws ForbiddenException when the caller is not a party', async () => {
       await expect(service.startSession('someone-else', 'conn-1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects starting a new session when the pair is blocked, even though Connection.status is MUTUAL_INTEREST (defense in depth)', async () => {
+      prisma.block.findFirst = vi.fn(async () => ({ id: 'block-1', blockerId: 'user-b', blockedId: 'user-a' }));
+      await expect(service.startSession('user-a', 'conn-1')).rejects.toThrow(ForbiddenException);
     });
 
     it('throws NotFoundException for a nonexistent connection', async () => {

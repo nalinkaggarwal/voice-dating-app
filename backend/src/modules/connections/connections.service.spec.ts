@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ConnectionsService } from './connections.service.js';
 
 describe('ConnectionsService', () => {
@@ -20,10 +20,22 @@ describe('ConnectionsService', () => {
     };
   }
 
+  let nextId = 1;
+
   beforeEach(() => {
     storage = { getDownloadUrl: vi.fn(async (key: string) => `https://signed.example.com/${key}`) };
+    nextId = 1;
 
     const connectionStore = new Map<string, any>();
+    const blockStore = new Map<string, any>();
+
+    function findConnectionByPair(userAId: string, userBId: string) {
+      for (const conn of connectionStore.values()) {
+        if (conn.userAId === userAId && conn.userBId === userBId) return conn;
+      }
+      return null;
+    }
+
     prisma = {
       connection: {
         findUnique: vi.fn(async ({ where: { id } }: any) => connectionStore.get(id) ?? null),
@@ -39,11 +51,42 @@ describe('ConnectionsService', () => {
           connectionStore.set(where.id, { ...existing, ...data });
           return { count: 1 };
         }),
+        upsert: vi.fn(async ({ where, create, update }: any) => {
+          const { userAId, userBId } = where.userAId_userBId;
+          const existing = findConnectionByPair(userAId, userBId);
+          if (existing) {
+            const updated = { ...existing, ...update };
+            connectionStore.set(existing.id, updated);
+            return updated;
+          }
+          const created = makeConnection({ id: `conn-${nextId++}`, status: 'SUGGESTED', ...create });
+          connectionStore.set(created.id, created);
+          return created;
+        }),
+      },
+      block: {
+        findFirst: vi.fn(async ({ where }: any) => {
+          for (const block of blockStore.values()) {
+            for (const clause of where.OR) {
+              if (block.blockerId === clause.blockerId && block.blockedId === clause.blockedId) return block;
+            }
+          }
+          return null;
+        }),
+        upsert: vi.fn(async ({ where, create }: any) => {
+          const key = `${where.blockerId_blockedId.blockerId}:${where.blockerId_blockedId.blockedId}`;
+          const existing = blockStore.get(key);
+          if (existing) return existing;
+          const created = { id: `block-${nextId++}`, createdAt: new Date(), ...create };
+          blockStore.set(key, created);
+          return created;
+        }),
       },
       profile: { findUnique: vi.fn() },
       $transaction: vi.fn(async (fn: any) => fn(prisma)),
     };
     (prisma as any)._store = connectionStore;
+    (prisma as any)._blockStore = blockStore;
 
     service = new ConnectionsService(prisma, storage as any);
   });
@@ -131,6 +174,7 @@ describe('ConnectionsService', () => {
 
       expect(prisma.profile.findUnique).toHaveBeenCalledWith({ where: { userId: 'user-b' } });
       expect(result).toEqual({
+        userId: 'user-b',
         displayName: 'Jordan',
         photoUrl: 'https://signed.example.com/photos/jordan.jpg',
       });
@@ -156,6 +200,62 @@ describe('ConnectionsService', () => {
 
     it('throws NotFoundException for a nonexistent connection', async () => {
       await expect(service.getReveal('user-a', 'nope')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException once BLOCKED, even if the pair was revealed before blocking', async () => {
+      seed(makeConnection({ status: 'BLOCKED' }));
+      await expect(service.getReveal('user-a', 'conn-1')).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('createSuggestion', () => {
+    it('creates a new SUGGESTED connection for an unblocked pair', async () => {
+      const connection = await service.createSuggestion('user-a', 'user-b');
+      expect(connection.status).toBe('SUGGESTED');
+    });
+
+    it('is idempotent -- calling it again for the same pair returns the same row, never a duplicate', async () => {
+      const first = await service.createSuggestion('user-a', 'user-b');
+      const second = await service.createSuggestion('user-a', 'user-b');
+      expect(second.id).toBe(first.id);
+    });
+
+    it('throws ForbiddenException when the pair has blocked each other (defense in depth for discovery/decide)', async () => {
+      await service.block('user-b', 'user-a');
+      await expect(service.createSuggestion('user-a', 'user-b')).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('block', () => {
+    it('creates a Block row and forces a BLOCKED status on an existing connection', async () => {
+      seed(makeConnection({ status: 'MUTUAL_INTEREST' }));
+      const { block, connection } = await service.block('user-a', 'user-b');
+      expect(block.blockerId).toBe('user-a');
+      expect(block.blockedId).toBe('user-b');
+      expect(connection.status).toBe('BLOCKED');
+    });
+
+    it('creates a BLOCKED connection even when no Connection row existed yet', async () => {
+      const { connection } = await service.block('user-a', 'user-b');
+      expect(connection.status).toBe('BLOCKED');
+      expect([connection.userAId, connection.userBId].sort()).toEqual(['user-a', 'user-b']);
+    });
+
+    it('is idempotent: blocking the same pair twice does not create a second Block row', async () => {
+      await service.block('user-a', 'user-b');
+      await service.block('user-a', 'user-b');
+      const blocks = [...(prisma as any)._blockStore.values()];
+      expect(blocks).toHaveLength(1);
+    });
+
+    it('overrides an AUTHENTICATED_MATCH/ACTIVE connection to BLOCKED -- reveal/messaging having happened does not grandfather anything in', async () => {
+      seed(makeConnection({ status: 'ACTIVE' }));
+      const { connection } = await service.block('user-a', 'user-b');
+      expect(connection.status).toBe('BLOCKED');
+    });
+
+    it('throws BadRequestException when a user tries to block themselves', async () => {
+      await expect(service.block('user-a', 'user-a')).rejects.toThrow(BadRequestException);
     });
   });
 });

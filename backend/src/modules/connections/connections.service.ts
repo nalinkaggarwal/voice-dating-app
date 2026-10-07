@@ -1,7 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException, NotImplementedException } from '@nestjs/common';
-import type { Connection } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { Block, Connection } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { StorageService } from '../../shared/storage/storage.service.js';
+import { isBlocked } from '../../shared/moderation/block.util.js';
 
 /** Lower-UUID-first ordering -- the ONE place this ordering rule is
  * decided, so createSuggestion/markInterested/every future caller agrees
@@ -42,6 +43,14 @@ export class ConnectionsService {
   // a row (in ANY status) just returns the existing row untouched, never
   // duplicates or errors.
   async createSuggestion(userAId: string, userBId: string): Promise<Connection> {
+    // Defense in depth: EligibilityService already excludes a blocked
+    // pair from ever being surfaced as a discovery candidate, but this is
+    // the one place EVERY caller that could create/progress a Connection
+    // (today just discovery's decide()) funnels through, so a block is
+    // enforced here too rather than relying solely on the filter upstream.
+    if (await isBlocked(this.prisma, userAId, userBId)) {
+      throw new ForbiddenException('Cannot create a connection between blocked users');
+    }
     const [a, b] = canonicalPair(userAId, userBId);
     return this.prisma.connection.upsert({
       where: { userAId_userBId: { userAId: a, userBId: b } },
@@ -176,7 +185,7 @@ export class ConnectionsService {
   async getReveal(
     userId: string,
     connectionId: string,
-  ): Promise<{ displayName: string | null; photoUrl: string | null }> {
+  ): Promise<{ userId: string; displayName: string | null; photoUrl: string | null }> {
     const connection = await this.prisma.connection.findUnique({ where: { id: connectionId } });
     if (!connection) throw new NotFoundException('Connection not found');
     if (connection.userAId !== userId && connection.userBId !== userId) {
@@ -185,16 +194,62 @@ export class ConnectionsService {
     if (connection.status === 'SUGGESTED') {
       throw new ForbiddenException('Not matched yet');
     }
+    // A prior reveal doesn't grandfather in access -- blocking cuts this
+    // off immediately too, same as it does for messaging.
+    if (connection.status === 'BLOCKED') {
+      throw new ForbiddenException('This connection is no longer available');
+    }
 
     const otherUserId = connection.userAId === userId ? connection.userBId : connection.userAId;
     const profile = await this.prisma.profile.findUnique({ where: { userId: otherUserId } });
     const photoUrl = profile?.photoUrl ? await this.storage.getDownloadUrl(profile.photoUrl) : null;
-    return { displayName: profile?.displayName ?? null, photoUrl };
+    // Included so the client can address a block()/report() call against
+    // this specific person -- safe to expose here specifically (unlike
+    // discovery's pre-decision payload) since revealing full identity is
+    // the entire point of this step.
+    return { userId: otherUserId, displayName: profile?.displayName ?? null, photoUrl };
   }
 
-  // TODO(WP3+): moderation/trust-safety escalation -> status BLOCKED.
-  // Idempotent, and must be reachable from any prior status.
-  async block(_userId: string, _connectionId: string): Promise<never> {
-    throw new NotImplementedException('block lands in WP3');
+  // blockerId blocks blockedId, by USER id rather than connectionId --
+  // unlike every other method here, a block is reachable even if no
+  // Connection row exists yet between this pair. One transaction: upsert
+  // the Block row (idempotent on its own unique constraint -- blocking
+  // twice is a harmless no-op) AND force any Connection between them
+  // (existing or not) to BLOCKED, unconditionally overriding whatever
+  // status it was in -- "immediately, everywhere" per the spec, not a
+  // guarded transition off a specific prior status like every other
+  // transition in this file. Reused by every other surface (messaging,
+  // Live Snap, discovery/connections) via shared/moderation's isBlocked
+  // helper, which checks the Block row directly rather than only trusting
+  // Connection.status.
+  async block(blockerId: string, blockedId: string): Promise<{ block: Block; connection: Connection }> {
+    if (blockerId === blockedId) {
+      throw new BadRequestException('Cannot block yourself');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const block = await tx.block.upsert({
+        where: { blockerId_blockedId: { blockerId, blockedId } },
+        create: { blockerId, blockedId },
+        update: {},
+      });
+
+      const [a, b] = canonicalPair(blockerId, blockedId);
+      const connection = await tx.connection.upsert({
+        where: { userAId_userBId: { userAId: a, userBId: b } },
+        create: { userAId: a, userBId: b, status: 'BLOCKED' },
+        update: { status: 'BLOCKED' },
+      });
+
+      return { block, connection };
+    });
+  }
+
+  // The caller's own "people I've blocked" list -- there's no separate
+  // "who blocked me" surface (nothing in the product needs it, and
+  // exposing it would defeat the point of a block), so this only ever
+  // queries blocksMade, never the inverse relation.
+  async listBlocked(userId: string): Promise<Block[]> {
+    return this.prisma.block.findMany({ where: { blockerId: userId }, orderBy: { createdAt: 'desc' } });
   }
 }

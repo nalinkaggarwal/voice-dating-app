@@ -111,6 +111,7 @@ class _ConversationTile extends StatelessWidget {
           builder: (_) => MessageThreadScreen(
             connectionId: conversation.connectionId,
             currentUserId: currentUserId,
+            otherUserId: conversation.otherUserId,
             otherDisplayName: conversation.displayName,
           ),
         ),

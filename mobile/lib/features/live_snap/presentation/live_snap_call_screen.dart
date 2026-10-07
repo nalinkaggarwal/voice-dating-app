@@ -4,29 +4,38 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../messaging/presentation/message_thread_screen.dart';
+import '../../trust_safety/domain/report_reason.dart';
+import '../../trust_safety/presentation/trust_safety_actions.dart';
 import '../application/live_snap_state.dart';
 import '../domain/live_snap_models.dart';
 
 class LiveSnapCallScreen extends StatelessWidget {
-  const LiveSnapCallScreen({super.key, required this.connectionId, required this.currentUserId});
+  const LiveSnapCallScreen({
+    super.key,
+    required this.connectionId,
+    required this.currentUserId,
+    required this.otherUserId,
+  });
 
   final String connectionId;
   final String currentUserId;
+  final String otherUserId;
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => LiveSnapState(connectionId: connectionId)..start(),
-      child: _LiveSnapBody(connectionId: connectionId, currentUserId: currentUserId),
+      child: _LiveSnapBody(connectionId: connectionId, currentUserId: currentUserId, otherUserId: otherUserId),
     );
   }
 }
 
 class _LiveSnapBody extends StatelessWidget {
-  const _LiveSnapBody({required this.connectionId, required this.currentUserId});
+  const _LiveSnapBody({required this.connectionId, required this.currentUserId, required this.otherUserId});
 
   final String connectionId;
   final String currentUserId;
+  final String otherUserId;
 
   Future<void> _handleDecline(BuildContext context, LiveSnapState state) async {
     await state.declineMatch();
@@ -44,7 +53,11 @@ class _LiveSnapBody extends StatelessWidget {
       // thread rather than back to Discovery with no obvious next step.
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (_) => MessageThreadScreen(connectionId: connectionId, currentUserId: currentUserId),
+          builder: (_) => MessageThreadScreen(
+          connectionId: connectionId,
+          currentUserId: currentUserId,
+          otherUserId: otherUserId,
+        ),
         ),
         (route) => route.isFirst,
       );
@@ -61,7 +74,21 @@ class _LiveSnapBody extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(title: const Text('Live Snap')),
+      appBar: AppBar(
+        title: const Text('Live Snap'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.flag_outlined),
+            tooltip: 'Report',
+            onPressed: () => showReportDialog(
+              context,
+              reportedUserId: otherUserId,
+              reportContext: ReportContext.liveSnap,
+              contextId: state.sessionId,
+            ),
+          ),
+        ],
+      ),
       body: _buildBody(context, state),
     );
   }

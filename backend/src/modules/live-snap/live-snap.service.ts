@@ -1,16 +1,26 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { LiveSnapSession } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { isBlocked } from '../../shared/moderation/block.util.js';
 
 @Injectable()
 export class LiveSnapService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // startSession's own status check (MUTUAL_INTEREST/SNAP_PENDING only)
+  // already excludes a BLOCKED connection, but checking the Block table
+  // directly here too is the same defense-in-depth layer messaging's
+  // getOwnedActiveConnection uses -- never rely on Connection.status alone
+  // being the only thing standing between a blocked pair and a new call.
   private async getOwnedConnection(userId: string, connectionId: string) {
     const connection = await this.prisma.connection.findUnique({ where: { id: connectionId } });
     if (!connection) throw new NotFoundException('Connection not found');
     if (connection.userAId !== userId && connection.userBId !== userId) {
       throw new ForbiddenException('You are not a party to this connection');
+    }
+    const otherUserId = connection.userAId === userId ? connection.userBId : connection.userAId;
+    if (await isBlocked(this.prisma, userId, otherUserId)) {
+      throw new ForbiddenException('This connection is no longer available');
     }
     return connection;
   }

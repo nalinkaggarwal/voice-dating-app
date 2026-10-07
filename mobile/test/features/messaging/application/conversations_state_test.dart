@@ -20,7 +20,7 @@ class _FakeRepository extends MessagingRepository {
 void main() {
   group('ConversationsState.load', () {
     test('populates conversations on success', () async {
-      const conversation = Conversation(connectionId: 'conn-1', displayName: 'Jordan', photoUrl: null, lastMessage: null);
+      const conversation = Conversation(connectionId: 'conn-1', otherUserId: 'user-b', displayName: 'Jordan', photoUrl: null, lastMessage: null);
       final state = ConversationsState(repository: _FakeRepository(conversations: const [conversation]));
 
       await state.load();

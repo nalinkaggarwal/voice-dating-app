@@ -9,6 +9,8 @@ import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 
 import '../../../shared/widgets/voice_clip_player.dart';
+import '../../trust_safety/domain/report_reason.dart';
+import '../../trust_safety/presentation/trust_safety_actions.dart';
 import '../application/message_thread_state.dart';
 import '../domain/message.dart';
 
@@ -24,26 +26,29 @@ class MessageThreadScreen extends StatelessWidget {
     super.key,
     required this.connectionId,
     required this.currentUserId,
+    required this.otherUserId,
     this.otherDisplayName,
   });
 
   final String connectionId;
   final String currentUserId;
+  final String otherUserId;
   final String? otherDisplayName;
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => MessageThreadState(connectionId: connectionId, currentUserId: currentUserId)..load(),
-      child: _MessageThreadBody(title: otherDisplayName ?? 'Chat'),
+      child: _MessageThreadBody(title: otherDisplayName ?? 'Chat', otherUserId: otherUserId),
     );
   }
 }
 
 class _MessageThreadBody extends StatefulWidget {
-  const _MessageThreadBody({required this.title});
+  const _MessageThreadBody({required this.title, required this.otherUserId});
 
   final String title;
+  final String otherUserId;
 
   @override
   State<_MessageThreadBody> createState() => _MessageThreadBodyState();
@@ -109,12 +114,44 @@ class _MessageThreadBodyState extends State<_MessageThreadBody> {
     await context.read<MessageThreadState>().sendVoice(bytes, contentType: 'audio/mp4', durationSec: durationSec);
   }
 
+  Future<void> _handleBlock(BuildContext context) async {
+    final blocked = await confirmAndBlockUser(context, userId: widget.otherUserId);
+    // The blocked match disappears from the conversation list on its own
+    // (backend's listConversations only returns AUTHENTICATED_MATCH/
+    // ACTIVE connections, and blocking forces BLOCKED) -- popping back
+    // there is enough; no special "removed" state needed in this screen
+    // itself since it's gone the moment you leave it.
+    if (blocked && context.mounted) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<MessageThreadState>();
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(
+        title: Text(widget.title),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'report') {
+                showReportDialog(
+                  context,
+                  reportedUserId: widget.otherUserId,
+                  reportContext: ReportContext.connection,
+                  contextId: state.connectionId,
+                );
+              } else if (value == 'block') {
+                _handleBlock(context);
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'report', child: Text('Report conversation')),
+              PopupMenuItem(value: 'block', child: Text('Block')),
+            ],
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(child: _buildMessageList(context, state)),

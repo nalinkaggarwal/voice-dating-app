@@ -5,6 +5,7 @@ import { IdentityService } from './identity.service.js';
 import { OtpService } from './otp.service.js';
 import { TokenService } from './token.service.js';
 import { AccessTokenGuard } from './guards/access-token.guard.js';
+import { AdminGuard } from './guards/admin.guard.js';
 import { ConsoleOtpProvider } from './providers/console-otp.provider.js';
 import { OTP_DELIVERY_PROVIDER } from './providers/otp-provider.interface.js';
 
@@ -16,8 +17,9 @@ import { OTP_DELIVERY_PROVIDER } from './providers/otp-provider.interface.js';
     OtpService,
     TokenService,
     AccessTokenGuard,
+    AdminGuard,
     { provide: OTP_DELIVERY_PROVIDER, useClass: ConsoleOtpProvider },
   ],
-  exports: [TokenService, AccessTokenGuard],
+  exports: [TokenService, AccessTokenGuard, AdminGuard],
 })
 export class IdentityModule {}

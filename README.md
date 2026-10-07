@@ -1,4 +1,4 @@
-# Lolly.ai — WP1 + WP2 + WP3 + WP4 + WP5
+# Lolly.ai — WP1 + WP2 + WP3 + WP4 + WP5 + WP6
 
 A dating app where users hear a voice clip before seeing a photo:
 
@@ -25,10 +25,17 @@ project** — live delivery only works while both users have the app open
 with a socket connected. **Implemented and unit-tested, not yet verified
 on a real device** — see "Verification status" below before treating
 this as a finished, shippable chat feature.
+**WP6**: Moderation & Block — launch-blocking per the original spec, not
+optional scope. `block()`/`report()` implemented for real (closing the
+WP1-era `BLOCKED` status and WP5's own messaging TODO), a priority-aware
+moderation queue, and enforcement wired into discovery, messaging, Live
+Snap, and Mutual Reveal — each with its own explicit test rather than
+assumed coverage from a general rule (the same lesson WP3's photo-leak
+bug taught).
 
 ## Verification status
 
-What's actually been confirmed, and what hasn't, as of WP5 — kept in one
+What's actually been confirmed, and what hasn't, as of WP6 — kept in one
 place so it doesn't get lost in the per-section detail below:
 
 | | Backend tests | Mobile unit tests | `flutter analyze`/build | Real device/emulator | Real two-device session |
@@ -36,8 +43,9 @@ place so it doesn't get lost in the per-section detail below:
 | WP1-3 | ✅ pass | ✅ pass | ✅ clean / APK builds | ❌ not run | n/a |
 | WP4 (Reveal + Live Snap) | ✅ pass | ✅ pass (`confirmMatch`/`declineMatch` only — see below) | ✅ clean / APK builds | ❌ not run | ❌ never exercised |
 | WP5 (Chat) | ✅ pass | ✅ pass (`MessageThreadState` fully covered) | ✅ clean / APK builds | ❌ not run | ❌ never exercised |
+| WP6 (Moderation & Block) | ✅ pass | ✅ pass (pure `wireValue` mapping only — see below) | ✅ clean / APK builds | ❌ not run | ❌ never exercised |
 
-Current totals (all of WP1-5 together): **188 backend tests, 35 mobile
+Current totals (all of WP1-6 together): **216 backend tests, 37 mobile
 tests, 0 analyzer errors** — see each module's own test file for the
 per-feature breakdown; these numbers aren't re-split by work package
 below.
@@ -58,6 +66,12 @@ that means:
   catch-up, delivered/read) is fully unit-tested against a **fake**
   `ChatSocketClient` — real-world behavior against the actual backend
   Socket.IO gateway over a real network has never been observed.
+- WP6's `confirmAndBlockUser()`/`showReportDialog()` dialogs and their
+  wiring into `RevealScreen`/`MessageThreadScreen`/`LiveSnapCallScreen`
+  have never been tapped through on a real screen -- only the pure
+  `ReportReason`/`ReportContext` wire-value mapping they depend on is
+  unit-tested (no Flutter `State`/`ChangeNotifier` layer exists for these
+  dialogs to test against a fake repository the way Reveal/Chat do).
 - Treat your first `flutter run` against a real device/emulator, with
   two devices/accounts for Live Snap and chat specifically, as the next
   verification step this session could not take further.
@@ -96,7 +110,7 @@ npm run start:dev
 
 Tests: `npm test` (Vitest, all offline — Prisma/OTP-delivery/queues are
 mocked, no live DB or Redis needed). Lint: `npm run lint`. Type-check:
-`npx tsc --noEmit`. **188 tests, all passing** as of WP5.
+`npx tsc --noEmit`. **216 tests, all passing** as of WP6.
 
 ### API versioning
 
@@ -237,7 +251,7 @@ effects on retry" guarantee above intact.
 ### Mutual Reveal + Live Snap — WP4
 
 ```
-GET  /connections/:id/reveal          -> { displayName, photoUrl }  (the OTHER party's)
+GET  /connections/:id/reveal          -> { userId, displayName, photoUrl }  (the OTHER party's)
 POST /connections/:id/decline         -> status CLOSED
 POST /connections/:id/snap/confirm    -> { connection, matched }
 
@@ -246,11 +260,15 @@ GET  /live-snap/:connectionId/session -> latest LiveSnapSession for this connect
 ```
 
 **Mutual Reveal**: `ConnectionsService.getReveal()` — the matched user's
-name + a signed photo URL (`StorageService.getDownloadUrl`, same pattern
-`discovery.service.ts` uses for `voiceClipUrl`), gated on the connection
-being MUTUAL_INTEREST or later. "Hear before you see" only governs the
-pre-decision discovery payload (`TodayQueueEntryView`) — once there's a
-real mutual match, revealing identity is the whole point of this step.
+id, name + a signed photo URL (`StorageService.getDownloadUrl`, same
+pattern `discovery.service.ts` uses for `voiceClipUrl`), gated on the
+connection being MUTUAL_INTEREST or later — and, since WP6, explicitly
+rejecting BLOCKED too (a prior reveal doesn't grandfather in access once
+blocked, same rule WP6 applies to messaging). "Hear before you see" only
+governs the pre-decision discovery payload (`TodayQueueEntryView`) —
+once there's a real mutual match, revealing identity (including the
+userId, added in WP6 so the client can actually address a block/report
+call) is the whole point of this step.
 
 **Live Snap**: a live mutual WebRTC video call, not an independent
 per-user liveness check — the two users see each other live before either
@@ -287,7 +305,7 @@ UI/backend after AUTHENTICATED_MATCH (`messaging` stays a stub too).
 ### Chat — WP5
 
 ```
-GET  /messaging/conversations              -> { conversations: [{ connectionId, displayName, photoUrl, lastMessage }] }
+GET  /messaging/conversations              -> { conversations: [{ connectionId, otherUserId, displayName, photoUrl, lastMessage }] }
 POST /messaging/voice/upload-url           { contentType } -> { uploadUrl, key }
 GET  /messaging/:connectionId/messages     ?before=<ts> | ?since=<ts> | ?limit=<n> -> { messages, hasMore }
 POST /messaging/:connectionId/messages     { type: "TEXT"|"VOICE", textContent? | audioUrl?+audioDurationSec? } -> Message
@@ -302,10 +320,18 @@ One `Message` row per text or voice message (new model — `type`,
 gate every method goes through: caller must be a party to the connection
 AND its status must be exactly one of those two. It's an **allowlist, not
 a denylist** — SUGGESTED/MUTUAL_INTEREST/SNAP_PENDING/CLOSED/BLOCKED are
-all rejected by not being in the allowed set. That matters specifically
-for BLOCKED: `block()` (`ConnectionsService`) is still an unimplemented
-stub, but the day it starts actually setting that status, messaging is cut
-off here for free — nothing in this module needs to change.
+all rejected by not being in the allowed set. That mattered specifically
+for BLOCKED: this allowlist shape meant `block()` (`ConnectionsService`,
+landed in WP6 — see below) cut messaging off for free the moment it
+started actually setting that status, with nothing in this module needing
+to change. WP6 added one more layer on top regardless (an explicit
+`isBlocked` check against the `Block` table itself) — see WP6's own
+section for why.
+`otherUserId` on both the conversation list and the thread's own address
+(connectionId + otherUserId, threaded from `RevealScreen` and
+`ConversationsListScreen`) is what lets the Flutter client actually
+address a block()/report() call from WP6's UI — added for that reason,
+not part of the original WP5 scope.
 
 **Sending a message is REST-only**, deliberately not symmetric with the
 `message:send` socket event a first-draft spec for this work package
@@ -356,14 +382,135 @@ updates of its own (REST-only, refreshed on open/pull-to-refresh) — only
 an open thread gets real-time delivery. No typing indicators, no message
 editing/deletion, no group chat (one Connection, two participants, always).
 
+### Moderation & Block — WP6
+
+```
+POST /connections/block                    { blockedUserId } -> { block, connection }
+GET  /connections/blocks                   -> Block[] (the caller's own "people I've blocked" list)
+
+POST /moderation/reports                   { reportedUserId, reason, context, contextId?, details? } -> Report
+GET  /moderation/reports                   ?status=&context=&priority= -> Report[] (admin only)
+GET  /moderation/reports/:id               -> Report (admin only)
+POST /moderation/reports/:id/action        { status, decision? } -> Report (admin only; covers assign/action AND dismiss)
+```
+
+Launch-blocking per the original spec, not optional scope — the Connections
+schema had a `BLOCKED` status sitting unused since WP1, WP3's eligibility
+filter already excluded it generally, and messaging's access-control gate
+had a TODO referencing this future implementation. All three now have
+something real behind them.
+
+**`block()`** (`ConnectionsService.block(blockerId, blockedId)`, by user
+id rather than connectionId — unlike every other method in that service,
+a block must be reachable even for a pair with no `Connection` row yet) —
+one transaction: upsert a `Block` row (idempotent on its own unique
+constraint) AND force any `Connection` between the pair, existing or not,
+to `BLOCKED` — unconditionally overriding whatever status it was in,
+reusing `createSuggestion`'s own upsert-by-canonical-pair idiom rather
+than writing new matching logic. This is the one transition in this
+service that does NOT guard off a specific prior status, by design — the
+spec's "immediately, everywhere" requirement means a block has to win
+over AUTHENTICATED_MATCH/ACTIVE/whatever else, not just a tidy subset of
+statuses.
+
+**Enforcement** is layered, not single-point, per an explicit instruction
+not to trust one check alone:
+- Discovery already excluded any existing `Connection` in any status
+  (including `BLOCKED`) before this WP — `eligibility.util.spec.ts`
+  already asserted this specific case at the pure-function level. WP6
+  adds `eligibility.service.spec.ts`, a DB-mocked integration-level test
+  of the same case through `eligibleCandidatesFor()` itself — the WP3
+  photo-leak bug happened at exactly this kind of gap (correct pure logic,
+  never actually exercised through the service that wires it up), so this
+  specific case gets its own test at that level too, not just inferred
+  from the util-level one "generally covering" it.
+- `ConnectionsService.createSuggestion()` (discovery's decide() path) now
+  checks a new shared `isBlocked()` helper (`shared/moderation/block.util.ts`
+  — a direct `Block`-table query, callable from any module with
+  `PrismaService` already in hand, no cross-module DI needed) before
+  creating/progressing a `Connection` — defense in depth on top of the
+  eligibility filter, not a replacement for it.
+- `MessagingService.getOwnedActiveConnection()` and
+  `LiveSnapService.getOwnedConnection()` both call the same `isBlocked()`
+  helper on top of their existing status checks — BLOCKED already fails
+  the allowlist/status check on its own, so this is a second, independent
+  signal (the `Block` table itself, not a status derived from it) standing
+  between a blocked pair and messaging or a new Live Snap session.
+- `ConnectionsService.getReveal()` now explicitly rejects `BLOCKED` too —
+  a prior reveal doesn't grandfather in access.
+
+**`report()`** (`ModerationService.report()`) is deliberately independent
+of `block()` — reporting never blocks, and blocking never requires a
+report on file first (confirmed explicitly per the kickoff brief's own
+ask, not assumed). Reports a profile, a message, or a Live Snap session
+(`ReportContext`), with an optional `contextId` naming the specific one.
+**Priority** (`report-priority.util.ts`) is computed, not a stored
+column — a `LIVE_SNAP`-context report or a `SAFETY_CONCERN` reason ranks
+`HIGH`, everything else `NORMAL`, oldest-first within each tier (FIFO) —
+computing it keeps it from ever drifting out of sync with the
+reason/context it's derived from.
+
+**Admin**, for this MVP pass: a plain `isAdmin` boolean on `User`
+(confirmed explicitly per the kickoff brief's own ask — manually set via
+a direct DB `UPDATE`, no self-serve promotion flow, no role/RBAC system).
+`AdminGuard` (`identity/guards/`, alongside `AccessTokenGuard`) does the
+one DB lookup this needs; `isAdmin` is deliberately NOT encoded into the
+short-lived access token itself, so revoking admin access takes effect on
+a user's very next request rather than only their next login. Every
+`/moderation/reports` route except creating a report itself is gated with
+`@UseGuards(AccessTokenGuard, AdminGuard)`, in that order (`AdminGuard`
+needs `request.userId`, which `AccessTokenGuard` sets).
+
+**Query pattern for "who have I blocked"**: one-directional storage
+(`blockerId`/`blockedId` on `Block`), queried only in the blocker's own
+direction (`listBlocked()` filters on `blockerId = callerId`) — there's
+no "who blocked me" surface anywhere in the product, and exposing one
+would defeat the point of a block, so `User.blocksReceived` exists purely
+as the inverse Prisma relation, never queried on its own. Enforcement
+(`isBlocked()`), unlike this query, checks both directions — if A blocked
+B, B is blocked from reaching A too, not just vice versa.
+
+**Message history on block**: kept, not deleted or hidden server-side —
+confirmed explicitly per the kickoff brief's own ask. Blocking forces the
+`Connection` to `BLOCKED`, and `getOwnedActiveConnection`'s allowlist
+already stops both read and send access for both parties the instant
+that happens; there's no separate "hide history" step because the access
+gate already covers it, and keeping the rows themselves intact leaves
+them available if a report tied to that conversation ever needs review.
+
+**Flutter**: a new `trust_safety/` feature — `TrustSafetyRepository`
+(`blockUser`/`reportUser`) plus two reusable pieces,
+`confirmAndBlockUser()` (a confirmation dialog first; blocking is a
+meaningful, hard-to-undo action, never a single accidental tap) and
+`showReportDialog()` (reason picker + optional details). Wired into
+`RevealScreen` (profile view, context `PROFILE`), `MessageThreadScreen`
+(context `CONNECTION`, contextId the connectionId), and
+`LiveSnapCallScreen` (report only, context `LIVE_SNAP`, contextId the
+session id — block isn't offered mid-call, matching the kickoff brief's
+own surface list). A blocked match doesn't need its own "no longer
+available" UI state: the backend's conversation list and reveal already
+only return AUTHENTICATED_MATCH/ACTIVE/non-BLOCKED connections, so once
+you pop back to a list screen after blocking, it's just gone, the same
+way any other filtered-out row would be. Threading `otherUserId` into
+`RevealProfile` and `Conversation` (both previously exposed only
+`displayName`/`photoUrl` — see WP4/WP5's sections above) is what makes
+addressing these calls from the client possible at all.
+
+**Explicitly out of scope for WP6**: no admin UI (REST-only, per the
+kickoff brief's own instruction to ask before building more than a small
+addition) and no in-call reporting UI beyond the single Live Snap report
+action described above (no moderator review tooling, no automated
+action on a report — `actionReport()` is a manual admin decision every
+time).
+
 ### Module structure
 
 Every module under `backend/src/modules/` follows the same shape
 (`controller` / `service` / `module` / `dto/`). `identity/`, `profile/`,
-`ai-profile/`, `connections/`, `discovery/`, `live-snap/`, and `messaging/`
-are built out fully. `realtime/` has its WP1 auth skeleton plus WP4's Live
-Snap signaling relay and WP5's chat broadcast. The rest (`moderation`,
-`billing`, `notifications`) are still stubs.
+`ai-profile/`, `connections/`, `discovery/`, `live-snap/`, `messaging/`,
+and `moderation/` (real since WP6) are built out fully. `realtime/` has
+its WP1 auth skeleton plus WP4's Live Snap signaling relay and WP5's
+chat broadcast. `billing` and `notifications` are still stubs.
 
 ### Database schema highlights
 
@@ -393,6 +540,16 @@ Snap signaling relay and WP5's chat broadcast. The rest (`moderation`,
   as the cursor" in one index. No `ConnectionStatus` change either --
   `ACTIVE` already existed on the enum (WP1) but nothing ever set it until
   WP5's first-message-sent transition.
+- WP6: `User.isAdmin` (plain boolean, see the Moderation section above for
+  why not a role/RBAC system). `Block` (`blockerId`/`blockedId`, unique on
+  the pair) and `Report` (`reporterId`/`reportedUserId`/`reason`/
+  `context`/`contextId`/`details`/`status`/`reviewedAt`/`reviewedBy`/
+  `decision`), plus `ReportReason`/`ReportContext`/`ReportStatus`. No
+  stored priority column on `Report` -- computed from `reason`/`context`
+  instead (see `report-priority.util.ts`), so it can't drift out of sync
+  with the columns it's derived from. No `ConnectionStatus` change --
+  `BLOCKED` already existed on the enum (WP1) but nothing ever set it
+  until WP6's `block()`.
 
 ## Mobile — running locally
 
@@ -409,11 +566,12 @@ ever regenerate). Required permission declarations are already in place:
   `NSCameraUsageDescription` (WP4), `NSPhotoLibraryUsageDescription`
 
 `flutter pub get` / `flutter analyze` / `flutter test` / `flutter build apk
---debug` have all actually been run and pass (35 tests, 0 analyzer errors,
+--debug` have all actually been run and pass (37 tests, 0 analyzer errors,
 APK builds — including WP4's `flutter_webrtc`/`socket_io_client` native
-code, reused as-is by WP5's chat socket, no new native dependencies
-needed). Two `dependency_overrides` in `pubspec.yaml` were needed to get
-there — both documented inline there:
+code, reused as-is by WP5's chat socket and WP6's trust_safety/ dialogs
+(plain `http` calls, no new native dependency), no new native
+dependencies needed). Two `dependency_overrides` in `pubspec.yaml` were
+needed to get there — both documented inline there:
 - `path_provider_foundation: 2.4.1` — newer versions pull in `objective_c`,
   which requires Dart's experimental native-assets build hooks; those hooks
   broke outright on a Windows profile path containing a space. Revisit once
@@ -490,7 +648,13 @@ lib/
                   AppBar -- there was no bottom-nav shell to hang this off
                   of before WP5, so this is the first real navigation
                   entry point into it.
-    voice_date/, trust_safety/, premium/
+    trust_safety/ WP6: not a screen -- TrustSafetyRepository
+                  (blockUser/reportUser) plus two reusable dialogs,
+                  confirmAndBlockUser() and showReportDialog(), used FROM
+                  reveal/, messaging/, and live_snap/ rather than being a
+                  destination of their own. trust_safety_screen.dart (the
+                  original placeholder) is still unused.
+    voice_date/, premium/
                   each a single placeholder screen for now
 ```
 
@@ -583,8 +747,17 @@ create` step required.
   above for why. Kicked off explicitly before WP1-4 were verified on a
   real device (a prerequisite the kickoff brief itself named) — a known,
   accepted risk, not an oversight; see the Mobile section's own caveat.
+- **WP6** — Admin concept: a plain `isAdmin` boolean on `User`, confirmed
+  explicitly rather than assumed (manually set for MVP, no self-serve
+  promotion flow, no role/RBAC system). Message history on block: kept,
+  not retroactively deleted/hidden, confirmed explicitly too — the
+  existing access-control allowlist already cuts off read/send the
+  instant a connection goes `BLOCKED`, so there's nothing left for a
+  separate "hide history" step to do. `report()`/`block()` kept fully
+  independent (reporting never blocks, blocking never requires a report
+  on file) — see the Moderation section above for the full reasoning.
 
-## Suggested next steps (WP6+)
+## Suggested next steps (WP7+)
 
 - Calling (voice/video, not just Live Snap's one-time check) once a
   Connection reaches `AUTHENTICATED_MATCH`/`ACTIVE` — `realtime` has the
@@ -597,7 +770,11 @@ create` step required.
   same time for either to work at all. This is the single biggest gap
   between "built" and "shippable" across WP4 and WP5 both.
 - Wire up a global `ValidationPipe` (see the Chat section's own note) --
-  every DTO's `class-validator` decorators across WP1-5 currently do
+  every DTO's `class-validator` decorators across WP1-6 currently do
   nothing; each service has had to hand-roll its own validation instead.
-- In-call/in-chat reporting and the `block()` connection action —
-  `trust_safety` and `ConnectionsService.block()` are both still stubs.
+- An admin UI for the moderation queue (WP6 is REST-only, per an explicit
+  decision not to build more than a small addition without asking first)
+  and moderator tooling beyond a manual `actionReport()` decision per
+  report (no automated action, no escalation workflow).
+- Billing/premium — `billing/` is still a stub; `User.tier` exists (WP3)
+  but nothing sets it from a real payment yet.

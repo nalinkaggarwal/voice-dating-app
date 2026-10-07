@@ -34,6 +34,10 @@ class LiveSnapState extends ChangeNotifier {
   String? _sessionId;
   bool _disposed = false;
 
+  /// Exposed so the call screen can attach it as a report's contextId --
+  /// "report a Live Snap session" needs to name which session.
+  String? get sessionId => _sessionId;
+
   static const _mediaConstraints = {
     'audio': true,
     'video': {'facingMode': 'user'},

@@ -41,6 +41,7 @@ describe('MessagingService', () => {
         updateMany: vi.fn(async () => ({ count: 1 })),
       },
       profile: { findUnique: vi.fn(async () => null) },
+      block: { findFirst: vi.fn(async () => null) },
     };
     storage = {
       generateKey: vi.fn(() => 'message-voice/abc.m4a'),
@@ -78,6 +79,18 @@ describe('MessagingService', () => {
       prisma.connection.findUnique = vi.fn(async () => null);
       await expect(service.getHistory('user-a', 'nope', {})).rejects.toThrow(NotFoundException);
     });
+
+    it.each(['user-a', 'user-b'])(
+      'rejects send/fetch for %s when the pair is blocked, even though Connection.status is ACTIVE (defense in depth)',
+      async (callerId) => {
+        prisma.connection.findUnique = vi.fn(async () => makeConnection({ status: 'ACTIVE' }));
+        prisma.block.findFirst = vi.fn(async () => ({ id: 'block-1', blockerId: 'user-b', blockedId: 'user-a' }));
+        await expect(
+          service.sendMessage(callerId, 'conn-1', { type: MessageType.TEXT, textContent: 'hi' } as any),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(service.getHistory(callerId, 'conn-1', {})).rejects.toThrow(ForbiddenException);
+      },
+    );
 
     it('IDOR guardrail: throws ForbiddenException for a user not party to the connection', async () => {
       await expect(service.getHistory('someone-else', 'conn-1', {})).rejects.toThrow(ForbiddenException);
@@ -247,6 +260,7 @@ describe('MessagingService', () => {
       expect(result).toEqual([
         {
           connectionId: 'conn-1',
+          otherUserId: 'user-b',
           displayName: 'Jordan',
           photoUrl: 'https://signed.example.com/photos/jordan.jpg',
           lastMessage: { type: MessageType.TEXT, textContent: 'hows it going', sentAt: expect.any(Date) },

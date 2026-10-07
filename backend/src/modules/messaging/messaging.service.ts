@@ -4,11 +4,17 @@ import { MessageType } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { StorageService } from '../../shared/storage/storage.service.js';
 import { audioExtensionForContentType } from '../../shared/storage/audio-extension.util.js';
+import { isBlocked } from '../../shared/moderation/block.util.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
 import type { SendMessageDto } from './dto/send-message.dto.js';
 
 export interface ConversationSummary {
   connectionId: string;
+  // The OTHER party's id -- needed so the client can address a
+  // block()/report() call against them from the thread screen; safe to
+  // expose here since this is already an AUTHENTICATED_MATCH/ACTIVE
+  // connection with full identity revealed.
+  otherUserId: string;
   displayName: string | null;
   photoUrl: string | null;
   lastMessage: { type: MessageType; textContent: string | null; sentAt: Date } | null;
@@ -29,10 +35,12 @@ export class MessagingService {
   // must be a party to the connection, AND it must be AUTHENTICATED_MATCH
   // or ACTIVE. This is an ALLOWLIST, not a denylist -- SUGGESTED,
   // MUTUAL_INTEREST, SNAP_PENDING, CLOSED, and BLOCKED are all rejected by
-  // not being in the allowed set. That matters for BLOCKED specifically:
-  // block() itself is still an unimplemented stub (ConnectionsService),
-  // but the day it starts actually setting status to BLOCKED, messaging
-  // is cut off here for free -- nothing in this module needs to change.
+  // not being in the allowed set, so ConnectionsService.block() setting
+  // status to BLOCKED already cuts messaging off for free. The isBlocked
+  // check below is the defense-in-depth layer on top of that -- it hits
+  // the Block table directly rather than trusting Connection.status alone,
+  // so a block is still enforced even in the (currently impossible, but
+  // not provably so forever) case that status drifted out of sync.
   private async getOwnedActiveConnection(userId: string, connectionId: string) {
     const connection = await this.prisma.connection.findUnique({ where: { id: connectionId } });
     if (!connection) throw new NotFoundException('Connection not found');
@@ -41,6 +49,10 @@ export class MessagingService {
     }
     if (connection.status !== 'AUTHENTICATED_MATCH' && connection.status !== 'ACTIVE') {
       throw new ForbiddenException(`Cannot message while connection status is ${connection.status}`);
+    }
+    const otherUserId = connection.userAId === userId ? connection.userBId : connection.userAId;
+    if (await isBlocked(this.prisma, userId, otherUserId)) {
+      throw new ForbiddenException('This connection is no longer available');
     }
     return connection;
   }
@@ -177,6 +189,7 @@ export class MessagingService {
         const photoUrl = profile?.photoUrl ? await this.storage.getDownloadUrl(profile.photoUrl) : null;
         return {
           connectionId: connection.id,
+          otherUserId,
           displayName: profile?.displayName ?? null,
           photoUrl,
           lastMessage: lastMessage

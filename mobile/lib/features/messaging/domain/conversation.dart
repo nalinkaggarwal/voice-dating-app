@@ -23,6 +23,7 @@ class LastMessagePreview {
 class Conversation {
   const Conversation({
     required this.connectionId,
+    required this.otherUserId,
     required this.displayName,
     required this.photoUrl,
     required this.lastMessage,
@@ -32,6 +33,7 @@ class Conversation {
     final rawLastMessage = json['lastMessage'] as Map<String, dynamic>?;
     return Conversation(
       connectionId: json['connectionId'] as String,
+      otherUserId: json['otherUserId'] as String,
       displayName: json['displayName'] as String?,
       photoUrl: json['photoUrl'] as String?,
       lastMessage: rawLastMessage != null ? LastMessagePreview.fromJson(rawLastMessage) : null,
@@ -39,6 +41,9 @@ class Conversation {
   }
 
   final String connectionId;
+  /// Needed to address a block()/report() call against them; see
+  /// trust_safety/.
+  final String otherUserId;
   final String? displayName;
   final String? photoUrl;
   final LastMessagePreview? lastMessage;

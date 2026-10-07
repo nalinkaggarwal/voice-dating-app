@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../live_snap/presentation/live_snap_call_screen.dart';
+import '../../trust_safety/domain/report_reason.dart';
+import '../../trust_safety/presentation/trust_safety_actions.dart';
 import '../application/reveal_state.dart';
+import '../domain/reveal_profile.dart';
 
 /// Mutual Reveal -- the matched user's name/photo, shown for the first
 /// time now that there's a real mutual match. Sits between the "You
@@ -39,20 +42,51 @@ class _RevealBody extends StatelessWidget {
     }
   }
 
-  void _startLiveSnap(BuildContext context) {
+  void _startLiveSnap(BuildContext context, String otherUserId) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => LiveSnapCallScreen(connectionId: connectionId, currentUserId: currentUserId),
+        builder: (_) => LiveSnapCallScreen(
+          connectionId: connectionId,
+          currentUserId: currentUserId,
+          otherUserId: otherUserId,
+        ),
       ),
     );
+  }
+
+  Future<void> _handleBlock(BuildContext context, RevealProfile profile) async {
+    final blocked = await confirmAndBlockUser(context, userId: profile.userId);
+    if (blocked && context.mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<RevealState>();
+    final profile = state.profile;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Your match')),
+      appBar: AppBar(
+        title: const Text('Your match'),
+        actions: profile == null
+            ? null
+            : [
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'report') {
+                      showReportDialog(context, reportedUserId: profile.userId, reportContext: ReportContext.profile);
+                    } else if (value == 'block') {
+                      _handleBlock(context, profile);
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'report', child: Text('Report')),
+                    PopupMenuItem(value: 'block', child: Text('Block')),
+                  ],
+                ),
+              ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: _buildBody(context, state),
@@ -113,7 +147,7 @@ class _RevealBody extends StatelessWidget {
               child: const Text('Not interested'),
             ),
             FilledButton(
-              onPressed: state.isLoading ? null : () => _startLiveSnap(context),
+              onPressed: state.isLoading || profile == null ? null : () => _startLiveSnap(context, profile.userId),
               child: const Text('Start Live Snap'),
             ),
           ],
