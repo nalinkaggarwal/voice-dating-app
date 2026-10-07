@@ -536,7 +536,14 @@ product scope:
   a live DB is the verification step still owed.
 - **CI never ran on push.** `.github/workflows/ci.yml` triggered on
   `push: branches: [main]`, but this repo's branch is `master`, so only
-  pull requests ever exercised it. Now `[master]`.
+  pull requests ever exercised it. Now `[master]`. Its first real run then
+  failed at `npm ci`: the lockfile is authored here on Node 24 / npm 11,
+  which tolerates two nested optional peers (`typescript@5` under
+  `vite-tsconfig-paths`, `magicast@0.3` under `@prisma/config`) being
+  absent, while CI's Node 22 / npm 10 rejects the lock as out of sync.
+  Reproduced locally with a portable Node 22. Fixed both ways: the lock
+  is regenerated so npm 10 and 11 both accept it, and CI now runs Node
+  24 to match the machine that writes the lock.
 - **Analyzer clean, not just error-free.** The 7 `flutter analyze` info
   lints (deprecated `RadioListTile.groupValue`/`onChanged` -> a
   `RadioGroup` ancestor, an unnecessary `dart:typed_data` import, and
