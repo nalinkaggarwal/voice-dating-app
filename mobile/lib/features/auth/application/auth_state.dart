@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../core/error/app_exception.dart';
+import '../../../core/notifications/push_registrar.dart';
 import '../data/auth_repository.dart';
 import '../domain/auth_channel.dart';
 
@@ -9,10 +12,18 @@ enum AuthStatus { unknown, authenticated, unauthenticated }
 /// Single source of truth for auth state across the app -- app_router.dart
 /// (or equivalent) listens to this to decide whether to show the
 /// auth/onboarding flow or the main app shell.
+///
+/// WP7: also the one place that knows WHEN a device token should be
+/// (un)registered -- every path that ends in `authenticated` syncs it,
+/// logout unregisters it before the session is cleared. The how lives
+/// behind [PushRegistrar]; with none passed (unit tests), nothing happens.
 class AuthState extends ChangeNotifier {
-  AuthState({AuthRepository? repository}) : _repository = repository ?? AuthRepository();
+  AuthState({AuthRepository? repository, PushRegistrar? pushRegistrar})
+      : _repository = repository ?? AuthRepository(),
+        _pushRegistrar = pushRegistrar;
 
   final AuthRepository _repository;
+  final PushRegistrar? _pushRegistrar;
 
   AuthStatus status = AuthStatus.unknown;
   bool isLoading = false;
@@ -24,6 +35,7 @@ class AuthState extends ChangeNotifier {
         ? AuthStatus.authenticated
         : AuthStatus.unauthenticated;
     notifyListeners();
+    if (status == AuthStatus.authenticated) _syncPush();
   }
 
   Future<bool> _run(Future<void> Function() action) async {
@@ -64,6 +76,7 @@ class AuthState extends ChangeNotifier {
       }
       await _repository.verifySignup(challengeId: challengeId, code: code);
       status = AuthStatus.authenticated;
+      _syncPush();
     });
   }
 
@@ -81,12 +94,24 @@ class AuthState extends ChangeNotifier {
       }
       await _repository.verifyLogin(challengeId: challengeId, code: code);
       status = AuthStatus.authenticated;
+      _syncPush();
     });
   }
 
   Future<void> logout() async {
+    // Needs the access token the repository is about to clear, so it goes
+    // first. The registrar swallows its own errors: a failed unregister
+    // must never keep someone logged in.
+    await _pushRegistrar?.unregisterForSignOut();
     await _repository.logout();
     status = AuthStatus.unauthenticated;
     notifyListeners();
+  }
+
+  // Fire-and-forget on purpose: the permission prompt and token fetch
+  // must not hold up the login UI, and the registrar never throws.
+  void _syncPush() {
+    final registrar = _pushRegistrar;
+    if (registrar != null) unawaited(registrar.syncForSignedInUser());
   }
 }

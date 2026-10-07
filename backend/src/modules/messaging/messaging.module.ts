@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { StorageModule } from '../../shared/storage/storage.module.js';
 import { IdentityModule } from '../identity/identity.module.js';
 import { RealtimeModule } from '../realtime/realtime.module.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { MessagingController } from './messaging.controller.js';
 import { MessagingService } from './messaging.service.js';
 
@@ -11,6 +12,7 @@ import { MessagingService } from './messaging.service.js';
     StorageModule, // signed voice-message upload/download URLs
     IdentityModule, // AccessTokenGuard
     RealtimeModule, // broadcasts message:* events through RealtimeGateway
+    NotificationsModule, // WP7: push to the other party on message:new
   ],
   controllers: [MessagingController],
   providers: [MessagingService],

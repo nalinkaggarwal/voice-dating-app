@@ -6,6 +6,7 @@ import { StorageService } from '../../shared/storage/storage.service.js';
 import { audioExtensionForContentType } from '../../shared/storage/audio-extension.util.js';
 import { isBlocked } from '../../shared/moderation/block.util.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import type { SendMessageDto } from './dto/send-message.dto.js';
 
 export interface ConversationSummary {
@@ -29,6 +30,7 @@ export class MessagingService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly gateway: RealtimeGateway,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // The one access-control gate every method below goes through: caller
@@ -109,6 +111,18 @@ export class MessagingService {
     }
 
     this.gateway.broadcastToChat(connectionId, 'message:new', message);
+
+    // WP7: the socket broadcast above only reaches the other party while
+    // their app is open with a socket connected; the push covers every
+    // other case. Awaited only for deterministic tests -- the message is
+    // already committed and notifyNewMessage never throws.
+    const recipientId = connection.userAId === userId ? connection.userBId : connection.userAId;
+    await this.notifications.notifyNewMessage(recipientId, {
+      connectionId,
+      senderId: userId,
+      type: message.type,
+      textContent: message.textContent,
+    });
     return message;
   }
 

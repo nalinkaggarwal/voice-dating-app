@@ -7,6 +7,7 @@ describe('MessagingService', () => {
   let prisma: any;
   let storage: { generateKey: ReturnType<typeof vi.fn>; getUploadUrl: ReturnType<typeof vi.fn>; getDownloadUrl: ReturnType<typeof vi.fn> };
   let gateway: { broadcastToChat: ReturnType<typeof vi.fn> };
+  let notifications: Record<string, ReturnType<typeof vi.fn>>;
 
   function makeConnection(overrides: Record<string, any> = {}) {
     return { id: 'conn-1', userAId: 'user-a', userBId: 'user-b', status: 'ACTIVE', ...overrides };
@@ -49,8 +50,14 @@ describe('MessagingService', () => {
       getDownloadUrl: vi.fn(async (key: string) => `https://signed.example.com/${key}`),
     };
     gateway = { broadcastToChat: vi.fn() };
+    notifications = {
+      notifyNewMessage: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+      notifyMutualMatch: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+      notifyLiveSnapInvite: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+      notifyAuthenticatedMatch: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+    };
 
-    service = new MessagingService(prisma, storage as any, gateway as any);
+    service = new MessagingService(prisma, storage as any, gateway as any, notifications as any);
   });
 
   describe('access control (every method)', () => {
@@ -280,6 +287,43 @@ describe('MessagingService', () => {
       const result = await service.requestVoiceUploadUrl('audio/mp4');
       expect(result).toEqual({ uploadUrl: 'https://s3.example.com/signed-put', key: 'message-voice/abc.m4a' });
       expect(storage.generateKey).toHaveBeenCalledWith('message-voice', 'm4a');
+    });
+  });
+
+  describe('WP7 push hooks', () => {
+    it('pushes a new message to the OTHER party, with the committed message fields', async () => {
+      await service.sendMessage('user-a', 'conn-1', { type: MessageType.TEXT, textContent: 'hey' } as any);
+      expect(notifications.notifyNewMessage).toHaveBeenCalledTimes(1);
+      expect(notifications.notifyNewMessage).toHaveBeenCalledWith('user-b', {
+        connectionId: 'conn-1',
+        senderId: 'user-a',
+        type: MessageType.TEXT,
+        textContent: 'hey',
+      });
+    });
+
+    it('resolves the recipient from whichever side is sending', async () => {
+      await service.sendMessage('user-b', 'conn-1', { type: MessageType.TEXT, textContent: 'yo' } as any);
+      expect(notifications.notifyNewMessage).toHaveBeenCalledWith('user-a', expect.objectContaining({ senderId: 'user-b' }));
+    });
+
+    it('pushes nothing when the send is rejected by the access-control gate', async () => {
+      prisma.connection.findUnique = vi.fn(async () => makeConnection({ status: 'BLOCKED' }));
+      await expect(
+        service.sendMessage('user-a', 'conn-1', { type: MessageType.TEXT, textContent: 'hey' } as any),
+      ).rejects.toThrow();
+      expect(notifications.notifyNewMessage).not.toHaveBeenCalled();
+    });
+
+    it('pushes after the broadcast, so a socket-connected recipient is never pushed-before-broadcast', async () => {
+      const order: string[] = [];
+      gateway.broadcastToChat = vi.fn(() => order.push('broadcast'));
+      notifications.notifyNewMessage = vi.fn(async () => {
+        order.push('push');
+        return { requested: 0, delivered: 0, failed: 0, forgotten: 0 };
+      });
+      await service.sendMessage('user-a', 'conn-1', { type: MessageType.TEXT, textContent: 'hey' } as any);
+      expect(order).toEqual(['broadcast', 'push']);
     });
   });
 });

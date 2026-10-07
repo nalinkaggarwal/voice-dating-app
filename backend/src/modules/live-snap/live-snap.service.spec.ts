@@ -4,6 +4,7 @@ import { LiveSnapService } from './live-snap.service.js';
 describe('LiveSnapService', () => {
   let service: LiveSnapService;
   let prisma: any;
+  let notifications: Record<string, ReturnType<typeof vi.fn>>;
 
   function makeConnection(overrides: Record<string, any> = {}) {
     return { id: 'conn-1', userAId: 'user-a', userBId: 'user-b', status: 'MUTUAL_INTEREST', ...overrides };
@@ -30,7 +31,13 @@ describe('LiveSnapService', () => {
         updateMany: vi.fn(async () => ({ count: 1 })),
       },
     };
-    service = new LiveSnapService(prisma);
+    notifications = {
+      notifyNewMessage: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+      notifyMutualMatch: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+      notifyLiveSnapInvite: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+      notifyAuthenticatedMatch: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+    };
+    service = new LiveSnapService(prisma, notifications as any);
   });
 
   describe('startSession', () => {
@@ -117,6 +124,26 @@ describe('LiveSnapService', () => {
         where: { id: 'session-1', status: { in: ['RINGING', 'ACTIVE'] } },
         data: { status: 'ENDED', endedAt: expect.any(Date) },
       });
+    });
+  });
+
+  describe('WP7 push hooks', () => {
+    it('rings the OTHER party when a new session is created', async () => {
+      await service.startSession('user-a', 'conn-1');
+      expect(notifications.notifyLiveSnapInvite).toHaveBeenCalledTimes(1);
+      expect(notifications.notifyLiveSnapInvite).toHaveBeenCalledWith('user-b', { connectionId: 'conn-1', callerId: 'user-a' });
+    });
+
+    it('does not ring again for a re-tap while a session is already RINGING/ACTIVE', async () => {
+      prisma.liveSnapSession.findFirst = vi.fn(async () => makeSession());
+      await service.startSession('user-a', 'conn-1');
+      expect(notifications.notifyLiveSnapInvite).not.toHaveBeenCalled();
+    });
+
+    it('does not ring when the start is rejected (wrong status)', async () => {
+      prisma.connection.findUnique = vi.fn(async () => makeConnection({ status: 'ACTIVE' }));
+      await expect(service.startSession('user-a', 'conn-1')).rejects.toThrow();
+      expect(notifications.notifyLiveSnapInvite).not.toHaveBeenCalled();
     });
   });
 });

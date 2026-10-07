@@ -11,3 +11,8 @@ build/
 coverage/
 
 *.tsbuildinfo
+
+# Firebase (WP7 push). Per-environment, and this repo is public.
+mobile/android/app/google-services.json
+mobile/ios/Runner/GoogleService-Info.plist
+backend/firebase-service-account*.json

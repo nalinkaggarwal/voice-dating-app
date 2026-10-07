@@ -3,6 +3,7 @@ import type { Block, Connection } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { StorageService } from '../../shared/storage/storage.service.js';
 import { isBlocked } from '../../shared/moderation/block.util.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 /** Lower-UUID-first ordering -- the ONE place this ordering rule is
  * decided, so createSuggestion/markInterested/every future caller agrees
@@ -35,6 +36,7 @@ export class ConnectionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // Create a SUGGESTED connection from the discovery/matching pipeline.
@@ -71,7 +73,7 @@ export class ConnectionsService {
   //      status already MUTUAL_INTEREST and skips the transition + its
   //      side effects, rather than re-firing a "match" notification.
   async markInterested(userId: string, connectionId: string): Promise<Connection> {
-    return this.prisma.$transaction(async (tx) => {
+    const { connection, becameMutual } = await this.prisma.$transaction(async (tx) => {
       const connection = await tx.connection.findUnique({ where: { id: connectionId } });
       if (!connection) throw new NotFoundException('Connection not found');
       if (connection.userAId !== userId && connection.userBId !== userId) {
@@ -85,15 +87,26 @@ export class ConnectionsService {
       });
 
       if (updated.userAInterested && updated.userBInterested && updated.status === 'SUGGESTED') {
-        // TODO(WP4+): fire the "it's a match" push notification here,
-        // inside this same guarded branch so it can never double-send.
-        return tx.connection.update({
+        const mutual = await tx.connection.update({
           where: { id: connectionId },
           data: { status: 'MUTUAL_INTEREST' },
         });
+        return { connection: mutual, becameMutual: true };
       }
-      return updated;
+      return { connection: updated, becameMutual: false };
     });
+
+    if (becameMutual) {
+      // WP7: the "it's a match" push, closing the WP1-era TODO that lived
+      // inside the guarded branch above. Fired only by the single call that
+      // flipped SUGGESTED -> MUTUAL_INTEREST (so it can never double-send),
+      // and only AFTER the transaction commits (so a rollback can't leave a
+      // push for a match that never happened). The caller already knows --
+      // decide() returns `matched` -- so the OTHER party is the recipient.
+      const otherUserId = connection.userAId === userId ? connection.userBId : connection.userAId;
+      await this.notifications.notifyMutualMatch(otherUserId, { connectionId, otherUserId: userId });
+    }
+    return connection;
   }
 
   // Either party declines -> status CLOSED. The mutation itself is a
@@ -139,7 +152,7 @@ export class ConnectionsService {
     userId: string,
     connectionId: string,
   ): Promise<{ connection: Connection; matched: boolean }> {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const connection = await tx.connection.findUnique({ where: { id: connectionId } });
       if (!connection) throw new NotFoundException('Connection not found');
       if (connection.userAId !== userId && connection.userBId !== userId) {
@@ -175,6 +188,16 @@ export class ConnectionsService {
       }
       return { connection: updated, matched: false };
     });
+
+    if (result.matched) {
+      // WP7: only the call that flipped to AUTHENTICATED_MATCH gets here
+      // (the early return above makes every later call a no-op), and only
+      // after commit. Names are allowed at this point -- both parties have
+      // been through Reveal and a live call together.
+      const otherUserId = result.connection.userAId === userId ? result.connection.userBId : result.connection.userAId;
+      await this.notifications.notifyAuthenticatedMatch(otherUserId, { connectionId, otherUserId: userId });
+    }
+    return result;
   }
 
   // The matched user's name + photo, revealed for the first time now that

@@ -5,6 +5,7 @@ describe('ConnectionsService', () => {
   let service: ConnectionsService;
   let prisma: any;
   let storage: { getDownloadUrl: ReturnType<typeof vi.fn> };
+  let notifications: Record<string, ReturnType<typeof vi.fn>>;
 
   function makeConnection(overrides: Record<string, any> = {}) {
     return {
@@ -88,7 +89,13 @@ describe('ConnectionsService', () => {
     (prisma as any)._store = connectionStore;
     (prisma as any)._blockStore = blockStore;
 
-    service = new ConnectionsService(prisma, storage as any);
+    notifications = {
+      notifyNewMessage: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+      notifyMutualMatch: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+      notifyLiveSnapInvite: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+      notifyAuthenticatedMatch: vi.fn(async () => ({ requested: 0, delivered: 0, failed: 0, forgotten: 0 })),
+    };
+    service = new ConnectionsService(prisma, storage as any, notifications as any);
   });
 
   function seed(connection: ReturnType<typeof makeConnection>) {
@@ -256,6 +263,45 @@ describe('ConnectionsService', () => {
 
     it('throws BadRequestException when a user tries to block themselves', async () => {
       await expect(service.block('user-a', 'user-a')).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('WP7 push hooks', () => {
+    it('markInterested pushes MUTUAL_MATCH to the OTHER party, only on the call that flips the status', async () => {
+      seed(makeConnection({ status: 'SUGGESTED', userAInterested: true, userBInterested: false }));
+      await service.markInterested('user-b', 'conn-1');
+      expect(notifications.notifyMutualMatch).toHaveBeenCalledTimes(1);
+      expect(notifications.notifyMutualMatch).toHaveBeenCalledWith('user-a', { connectionId: 'conn-1', otherUserId: 'user-b' });
+    });
+
+    it('markInterested pushes nothing while only one side is interested', async () => {
+      seed(makeConnection({ status: 'SUGGESTED', userAInterested: false, userBInterested: false }));
+      await service.markInterested('user-a', 'conn-1');
+      expect(notifications.notifyMutualMatch).not.toHaveBeenCalled();
+    });
+
+    it('markInterested pushes nothing on a repeat call after the flip (already MUTUAL_INTEREST)', async () => {
+      seed(makeConnection({ status: 'MUTUAL_INTEREST', userAInterested: true, userBInterested: true }));
+      await service.markInterested('user-a', 'conn-1');
+      expect(notifications.notifyMutualMatch).not.toHaveBeenCalled();
+    });
+
+    it('markSnapDone pushes AUTHENTICATED_MATCH to the OTHER party once both have confirmed', async () => {
+      seed(makeConnection({ status: 'SNAP_PENDING', userASnapDone: true, userBSnapDone: false }));
+      const result = await service.markSnapDone('user-b', 'conn-1');
+      expect(result.matched).toBe(true);
+      expect(notifications.notifyAuthenticatedMatch).toHaveBeenCalledTimes(1);
+      expect(notifications.notifyAuthenticatedMatch).toHaveBeenCalledWith('user-a', { connectionId: 'conn-1', otherUserId: 'user-b' });
+    });
+
+    it('markSnapDone pushes nothing on the first confirmation, and nothing on a no-op repeat', async () => {
+      seed(makeConnection({ status: 'MUTUAL_INTEREST', userASnapDone: false, userBSnapDone: false }));
+      await service.markSnapDone('user-a', 'conn-1');
+      expect(notifications.notifyAuthenticatedMatch).not.toHaveBeenCalled();
+
+      seed(makeConnection({ id: 'conn-2', status: 'AUTHENTICATED_MATCH', userASnapDone: true, userBSnapDone: true }));
+      await service.markSnapDone('user-a', 'conn-2');
+      expect(notifications.notifyAuthenticatedMatch).not.toHaveBeenCalled();
     });
   });
 });

@@ -4,6 +4,15 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Firebase (WP7 push): google-services.json is per-environment and
+// gitignored (this repo is public). Apply the plugin only when the file is
+// present, so a clone without it still builds -- push is then simply off
+// at runtime (PushNotifications.initialize catches the missing config).
+// The plugin id/version is declared in settings.gradle.kts.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.lolly.lolly"
     compileSdk = flutter.compileSdkVersion
@@ -12,6 +21,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // flutter_local_notifications (WP7) uses java.time; desugaring is its
+        // documented requirement for minSdk < 26.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -36,6 +48,10 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
 
 kotlin {

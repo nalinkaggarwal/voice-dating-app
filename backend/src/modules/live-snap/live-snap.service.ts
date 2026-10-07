@@ -2,10 +2,14 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import type { LiveSnapSession } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { isBlocked } from '../../shared/moderation/block.util.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 @Injectable()
 export class LiveSnapService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   // startSession's own status check (MUTUAL_INTEREST/SNAP_PENDING only)
   // already excludes a BLOCKED connection, but checking the Block table
@@ -43,7 +47,13 @@ export class LiveSnapService {
     });
     if (existing) return existing;
 
-    return this.prisma.liveSnapSession.create({ data: { connectionId } });
+    const session = await this.prisma.liveSnapSession.create({ data: { connectionId } });
+    // WP7: ring the other party. Only on a genuinely new session -- the
+    // early return above covers a re-tap on one already RINGING/ACTIVE --
+    // so the callee is rung once per call, not once per tap.
+    const calleeId = connection.userAId === userId ? connection.userBId : connection.userAId;
+    await this.notifications.notifyLiveSnapInvite(calleeId, { connectionId, callerId: userId });
+    return session;
   }
 
   // Latest session for this connection, for a client resuming after a

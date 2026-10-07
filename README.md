@@ -1,4 +1,4 @@
-# Lolly.ai — WP1 + WP2 + WP3 + WP4 + WP5 + WP6
+# Lolly.ai — WP1 + WP2 + WP3 + WP4 + WP5 + WP6 + WP7
 
 A dating app where users hear a voice clip before seeing a photo:
 
@@ -32,6 +32,14 @@ moderation queue, and enforcement wired into discovery, messaging, Live
 Snap, and Mutual Reveal — each with its own explicit test rather than
 assumed coverage from a general rule (the same lesson WP3's photo-leak
 bug taught).
+**WP7**: Push notifications — the "single biggest gap between built and
+shippable" named at the end of WP5. FCM via `firebase-admin` behind a
+pluggable provider (console stub when no service account is configured),
+device-token registration, and pushes on new message, mutual match, Live
+Snap invite and authenticated match — with "hear before you see" applied
+to the push text itself. **Backend and mobile both unit-tested; never
+exercised end-to-end**: creating the Firebase project needs the account
+owner (see "What WP7 still needs from you" in its section).
 
 ## Verification status
 
@@ -44,8 +52,9 @@ place so it doesn't get lost in the per-section detail below:
 | WP4 (Reveal + Live Snap) | ✅ pass | ✅ pass (`confirmMatch`/`declineMatch` only — see below) | ✅ clean / APK builds | ❌ not run | ❌ never exercised |
 | WP5 (Chat) | ✅ pass | ✅ pass (`MessageThreadState` fully covered) | ✅ clean / APK builds | ❌ not run | ❌ never exercised |
 | WP6 (Moderation & Block) | ✅ pass | ✅ pass (pure `wireValue` mapping only — see below) | ✅ clean / APK builds | ❌ not run | ❌ never exercised |
+| WP7 (Push notifications) | ✅ pass | ✅ pass (pure `PushPayload` parsing/routing only — see below) | ✅ clean / APK builds (without `google-services.json`) | ❌ launched only, push off (no Firebase config) | ❌ never exercised |
 
-Current totals (all of WP1-6 together): **233 backend tests, 37 mobile
+Current totals (all of WP1-7 together): **261 backend tests, 46 mobile
 tests, 0 analyzer issues** — see each module's own test file for the
 per-feature breakdown; these numbers aren't re-split by work package
 below.
@@ -72,6 +81,16 @@ that means:
   `ReportReason`/`ReportContext` wire-value mapping they depend on is
   unit-tested (no Flutter `State`/`ChangeNotifier` layer exists for these
   dialogs to test against a fake repository the way Reveal/Chat do).
+- WP7's `PushNotifications` (Firebase init, token registration, foreground
+  display, tap routing) has never run with a real `google-services.json`:
+  only the pure `PushPayload` parsing/routing rules it depends on are
+  unit-tested. The APK was installed and launched on a real Android
+  device once (OnePlus CPH2573, Android 16), which verified exactly one
+  thing: with no Firebase config the app starts normally to the auth
+  screen, no crash. The `[push] disabled` log line itself was NOT
+  observed -- that device surfaces no Flutter-tagged logcat lines at all
+  under `adb logcat`, so treat the graceful-degrade path as
+  launch-verified, not log-verified.
 - Treat your first `flutter run` against a real device/emulator, with
   two devices/accounts for Live Snap and chat specifically, as the next
   verification step this session could not take further.
@@ -110,7 +129,7 @@ npm run start:dev
 
 Tests: `npm test` (Vitest, all offline — Prisma/OTP-delivery/queues are
 mocked, no live DB or Redis needed). Lint: `npm run lint`. Type-check:
-`npx tsc --noEmit`. **233 tests, all passing** as of the post-WP6 hardening pass.
+`npx tsc --noEmit`. **261 tests, all passing** as of WP7.
 
 ### API versioning
 
@@ -502,6 +521,88 @@ action described above (no moderator review tooling, no automated
 action on a report — `actionReport()` is a manual admin decision every
 time).
 
+### Push notifications — WP7
+
+```
+POST /notifications/devices             { token, platform: "ANDROID"|"IOS" } -> DeviceToken   (upsert by token)
+POST /notifications/devices/unregister  { token }                            -> { removed }
+```
+
+Nothing is sent on a client's say-so: pushes originate only inside the
+services that own the triggering event, each hooked at the one place
+that event is decided and **after the transaction commits**:
+
+| Event | Hook | Recipient | Push text |
+|---|---|---|---|
+| New message | `MessagingService.sendMessage`, after the socket broadcast | the other party | sender's display name + text preview (80 chars) / "sent you a voice message" |
+| Mutual match | `ConnectionsService.markInterested`, the single call that flips SUGGESTED → MUTUAL_INTEREST | the party who liked *first* (the flipper already gets `matched` back) | **anonymous** — "Someone you liked likes you back" |
+| Live Snap invite | `LiveSnapService.startSession`, only on a genuinely new session (a re-tap on one already RINGING returns early) | the callee | caller's name + "wants to Live Snap" |
+| Authenticated match | `ConnectionsService.markSnapDone`, the single call that flips to AUTHENTICATED_MATCH | the party who confirmed first | other party's name + "Your chat is open" |
+
+**"Hear before you see" applies to the push text too.** The mutual-match
+push deliberately does no profile lookup: no name, no photo, and the
+mobile tap just foregrounds the app (`PushDestination.home`) — Reveal
+hasn't happened yet. From MUTUAL_INTEREST on, `getReveal` already permits
+the name, so Live Snap invites and match confirmations carry it and
+deep-link to the call / the thread. `notifications.service.spec.ts` pins
+this ("never looks up a profile and carries no name in title, body or
+data").
+
+**Provider seam** (`notifications/push/`): `PushProvider` is the one
+interface; `FcmPushProvider` wraps `firebase-admin`'s
+`sendEachForMulticast` (500-token batches, Android channel
+`lolly_default`, maps FCM's two dead-token codes to `unregistered`), and
+`ConsolePushProvider` logs instead — chosen by `push-provider.factory.ts`
+from `FIREBASE_SERVICE_ACCOUNT_PATH` / `FIREBASE_SERVICE_ACCOUNT_JSON`, with
+a loud warning when neither is set so a logged push is never mistaken for
+a delivered one. Same shape as identity's `ConsoleOtpProvider`.
+
+**Token bookkeeping** (`DeviceToken`, keyed by token not user): the same
+phone logging into another account moves the token to that account;
+tokens FCM reports dead are deleted on the spot; logout unregisters
+*before* the session is cleared (the call needs the access token).
+`notifyX` never throws — a push failing must never fail the message /
+match / call that triggered it; the services `await` it only so tests
+are deterministic.
+
+**Mobile** (`core/notifications/`): `PushNotifications` initializes
+Firebase before `runApp` (and simply disables itself if
+`google-services.json` is absent), creates the `lolly_default` channel,
+registers the token through `AuthState` (via the `PushRegistrar`
+interface so AuthState's own tests never touch Firebase), mirrors
+foreground arrivals as local notifications — except a message for the
+thread currently on screen, which `MessageThreadScreen` reports via
+`activeConnectionId` — and routes taps through `PushPayload`
+(`core/notifications/push_payload.dart`, pure Dart, fully unit-tested:
+wire parsing, forward-compatible null on unknown types, destination per
+kind, foreground suppression rule). A tap that arrives before the user id
+is known is parked and replayed by `attachSession`. Android:
+`POST_NOTIFICATIONS` permission, default channel meta-data, core-library
+desugaring (a `flutter_local_notifications` requirement), and the
+`google-services` Gradle plugin applied **only if the JSON file exists**
+so a clone without it still builds.
+
+**What WP7 still needs from you** (none of this can be done from a
+session without your Google account):
+
+1. A Firebase project (the CLI here is logged in but creating a project
+   was blocked as an account-level action). Add an Android app with
+   package name `com.lolly.lolly`, download `google-services.json` into
+   `mobile/android/app/` (gitignored).
+2. Project settings → Service accounts → *Generate new private key*; save
+   it as `backend/firebase-service-account.json` (gitignored) and set
+   `FIREBASE_SERVICE_ACCOUNT_PATH` in `backend/.env`.
+3. `flutter run` on a device: after login the log shows the token being
+   registered; the Firebase console's *Messaging → Send test message*
+   with that token is the quickest check of the mobile side alone; a
+   second account sending a message / starting Live Snap is the real
+   end-to-end check.
+
+**Explicitly out of scope for WP7**: iOS APNs setup (the code paths exist,
+no `GoogleService-Info.plist` or capability has been configured), a
+notification inbox / history, per-event opt-outs, and any push for
+events other than the four above.
+
 ### Post-WP6 hardening pass
 
 Four fixes that fell out of reviewing the WP6 tree, none of them new
@@ -556,7 +657,8 @@ Every module under `backend/src/modules/` follows the same shape
 `ai-profile/`, `connections/`, `discovery/`, `live-snap/`, `messaging/`,
 and `moderation/` (real since WP6) are built out fully. `realtime/` has
 its WP1 auth skeleton plus WP4's Live Snap signaling relay and WP5's
-chat broadcast. `billing` and `notifications` are still stubs.
+chat broadcast. `notifications/` is real since WP7. `billing` is still a
+stub.
 
 ### Database schema highlights
 
@@ -802,6 +904,15 @@ create` step required.
   separate "hide history" step to do. `report()`/`block()` kept fully
   independent (reporting never blocks, blocking never requires a report
   on file) — see the Moderation section above for the full reasoning.
+- **WP7** — Firebase project: NOT created from this session (account-level
+  action, left to the owner); everything is built so that dropping in the
+  two config files is the only remaining step. Mutual-match push: kept
+  anonymous on purpose, extending "hear before you see" to the lock
+  screen. Delivery policy: always push a new message, even to a user
+  whose socket is connected — Android keeps a background socket alive
+  for minutes, and "connected" is not "looking at the thread"; the mobile
+  side suppresses only the one redundant case (open thread, foreground).
+  Push failures never fail the triggering action.
 
 ## Suggested next steps (WP7+)
 
@@ -811,10 +922,9 @@ create` step required.
   on-demand call the way Live Snap's is for the one-time check.
 - A TURN server for Live Snap (and any future calling) — STUN-only today
   means a call can fail to connect behind a restrictive/symmetric NAT.
-- Push notifications — for an incoming Live Snap call AND for messages:
-  today both users need the app open (with a socket connected) at the
-  same time for either to work at all. This is the single biggest gap
-  between "built" and "shippable" across WP4 and WP5 both.
+- Push notifications: built in WP7 — what remains is the Firebase
+  project + service-account key and the first real on-device delivery
+  (see "What WP7 still needs from you"). iOS APNs is untouched.
 - An admin UI for the moderation queue (WP6 is REST-only, per an explicit
   decision not to build more than a small addition without asking first)
   and moderator tooling beyond a manual `actionReport()` decision per

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'core/notifications/push_notifications.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/application/auth_state.dart';
 import 'features/auth/data/auth_repository.dart';
@@ -9,7 +10,11 @@ import 'features/discovery/presentation/discovery_home_screen.dart';
 import 'features/onboarding/presentation/onboarding_flow_screen.dart';
 import 'shared/models/user.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // WP7: Firebase + notification channel + tap handlers. Never throws --
+  // on a build without google-services.json push is simply off.
+  await PushNotifications.instance.initialize();
   runApp(const LollyApp());
 }
 
@@ -19,10 +24,12 @@ class LollyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => AuthState()..bootstrap(),
+      create: (_) => AuthState(pushRegistrar: PushNotifications.instance)..bootstrap(),
       child: MaterialApp(
         title: 'Lolly.ai',
         theme: AppTheme.light,
+        // Lets a notification tap push a screen without a BuildContext.
+        navigatorKey: PushNotifications.instance.navigatorKey,
         home: const _AppRoot(),
       ),
     );
@@ -55,13 +62,19 @@ class _AppRootState extends State<_AppRoot> {
       // back in (same or different account) would reuse the PREVIOUS
       // session's already-resolved Future below and show stale user data.
       _currentUserFuture = null;
+      PushNotifications.instance.detachSession();
       return const AuthEntryScreen();
     }
 
     // Authenticated -- fetch the user once (not on every rebuild) to know
     // which onboarding step to resume at, rather than always restarting
-    // a returning user at basicInfo.
-    _currentUserFuture ??= _authRepository.getCurrentUser();
+    // a returning user at basicInfo. The push layer learns the user id
+    // from the same single fetch (a notification tap needs it to build
+    // the screen it opens), outside build so it may navigate freely.
+    _currentUserFuture ??= _authRepository.getCurrentUser().then((user) {
+      PushNotifications.instance.attachSession(user.id);
+      return user;
+    });
 
     return FutureBuilder<User>(
       future: _currentUserFuture,

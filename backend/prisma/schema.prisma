@@ -47,6 +47,8 @@ model User {
   reportsMade     Report[] @relation("Reporter")
   reportsReceived Report[] @relation("ReportedUser")
 
+  deviceTokens DeviceToken[] // WP7 push notifications
+
   // Application-level invariant (Prisma has no portable CHECK constraint):
   // exactly one of email/phone is required at signup, enforced in
   // identity/dto and IdentityService, not here.
@@ -448,4 +450,30 @@ model Report {
 
   @@index([status])
   @@index([reportedUserId])
+}
+
+// ── Push notifications (WP7) ─────────────────────────────────────────
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+}
+
+// One row per FCM registration token. Keyed by token, not by user: the
+// same physical phone logging into a different account must move the
+// token to that account (NotificationsService.registerDevice upserts on
+// `token`), or the previous user's pushes would keep landing on a phone
+// they no longer hold. Tokens FCM reports as dead are deleted on the
+// spot by sendToUser -- nothing here is ever "stale but kept".
+model DeviceToken {
+  id        String         @id @default(uuid())
+  userId    String
+  token     String         @unique
+  platform  DevicePlatform
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }

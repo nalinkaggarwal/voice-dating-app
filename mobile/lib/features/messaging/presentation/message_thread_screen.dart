@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 
+import '../../../core/notifications/push_notifications.dart';
 import '../../../shared/widgets/voice_clip_player.dart';
 import '../../trust_safety/domain/report_reason.dart';
 import '../../trust_safety/presentation/trust_safety_actions.dart';
@@ -39,14 +40,19 @@ class MessageThreadScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => MessageThreadState(connectionId: connectionId, currentUserId: currentUserId)..load(),
-      child: _MessageThreadBody(title: otherDisplayName ?? 'Chat', otherUserId: otherUserId),
+      child: _MessageThreadBody(
+        connectionId: connectionId,
+        title: otherDisplayName ?? 'Chat',
+        otherUserId: otherUserId,
+      ),
     );
   }
 }
 
 class _MessageThreadBody extends StatefulWidget {
-  const _MessageThreadBody({required this.title, required this.otherUserId});
+  const _MessageThreadBody({required this.connectionId, required this.title, required this.otherUserId});
 
+  final String connectionId;
   final String title;
   final String otherUserId;
 
@@ -66,8 +72,20 @@ class _MessageThreadBodyState extends State<_MessageThreadBody> {
   DateTime? _recordingStartedAt;
   Timer? _autoStopTimer;
 
+  // WP7: a foreground push for THIS thread is redundant while it is on
+  // screen (the socket already rendered the message) -- tell the push
+  // layer which thread that is, and un-tell it on the way out.
+  @override
+  void initState() {
+    super.initState();
+    PushNotifications.instance.activeConnectionId = widget.connectionId;
+  }
+
   @override
   void dispose() {
+    if (PushNotifications.instance.activeConnectionId == widget.connectionId) {
+      PushNotifications.instance.activeConnectionId = null;
+    }
     _textController.dispose();
     _recorder.dispose();
     _scrollController.dispose();
