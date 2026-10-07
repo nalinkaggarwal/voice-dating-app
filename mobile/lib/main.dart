@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/notifications/push_notifications.dart';
+import 'core/splash/brand_splash.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/application/auth_state.dart';
 import 'features/auth/data/auth_repository.dart';
@@ -28,8 +29,13 @@ class LollyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Lolly.ai',
         theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.system,
         // Lets a notification tap push a screen without a BuildContext.
         navigatorKey: PushNotifications.instance.navigatorKey,
+        // The brand splash sits above the Navigator so it covers whatever
+        // the auth bootstrap resolves to, then fades out of the way.
+        builder: (context, child) => BrandSplash(child: child ?? const SizedBox.shrink()),
         home: const _AppRoot(),
       ),
     );

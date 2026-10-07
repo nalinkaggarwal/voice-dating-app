@@ -150,7 +150,7 @@ class _LiveSnapBody extends StatelessWidget {
               right: 0,
               child: Center(
                 child: FloatingActionButton(
-                  backgroundColor: Colors.red,
+                  backgroundColor: Theme.of(context).colorScheme.error,
                   onPressed: state.endCall,
                   child: const Icon(Icons.call_end),
                 ),
@@ -173,7 +173,7 @@ class _LiveSnapBody extends StatelessWidget {
                 ),
                 if (state.errorMessage != null) ...[
                   const SizedBox(height: 16),
-                  Text(state.errorMessage!, style: const TextStyle(color: Colors.red)),
+                  Text(state.errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                 ],
                 const SizedBox(height: 32),
                 Row(

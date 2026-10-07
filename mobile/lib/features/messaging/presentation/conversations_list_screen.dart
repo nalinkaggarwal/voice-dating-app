@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/branding.dart';
+import '../../../shared/widgets/empty_state.dart';
 import '../application/conversations_state.dart';
 import '../domain/conversation.dart';
 import '../domain/message.dart';
@@ -48,38 +51,43 @@ class _ConversationsBody extends StatelessWidget {
     }
 
     if (state.errorMessage != null && state.conversations.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(state.errorMessage!, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            OutlinedButton(onPressed: state.load, child: const Text('Try again')),
-          ],
+      return _scrollable(
+        EmptyState(
+          icon: Icons.wifi_off_rounded,
+          title: "Couldn't load your messages",
+          body: state.errorMessage,
+          action: OutlinedButton(onPressed: state.load, child: const Text('Try again')),
         ),
       );
     }
 
     if (state.conversations.isEmpty) {
-      return LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: const Center(
-              child: Text('No conversations yet -- they start once you and a match confirm Live Snap.'),
-            ),
-          ),
+      return _scrollable(
+        const EmptyState(
+          icon: Icons.forum_outlined,
+          title: 'No conversations yet',
+          body: 'A chat opens once you and a match confirm each other on Live Snap.',
         ),
       );
     }
 
     return ListView.separated(
+      padding: const EdgeInsets.all(AppSpacing.md),
       itemCount: state.conversations.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
       itemBuilder: (context, index) => _ConversationTile(
         conversation: state.conversations[index],
         currentUserId: currentUserId,
+      ),
+    );
+  }
+
+  // RefreshIndicator needs a scrollable child even for the empty states.
+  Widget _scrollable(Widget child) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(constraints: BoxConstraints(minHeight: constraints.maxHeight), child: child),
       ),
     );
   }
@@ -99,23 +107,63 @@ class _ConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundImage: conversation.photoUrl != null ? NetworkImage(conversation.photoUrl!) : null,
-        child: conversation.photoUrl == null ? const Icon(Icons.person) : null,
-      ),
-      title: Text(conversation.displayName ?? 'Your match'),
-      subtitle: Text(_previewText(), maxLines: 1, overflow: TextOverflow.ellipsis),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => MessageThreadScreen(
-            connectionId: conversation.connectionId,
-            currentUserId: currentUserId,
-            otherUserId: conversation.otherUserId,
-            otherDisplayName: conversation.displayName,
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isVoice = conversation.lastMessage?.type == MessageType.voice;
+
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: ListTile(
+        leading: _Avatar(photoUrl: conversation.photoUrl),
+        title: Text(conversation.displayName ?? 'Your match', style: theme.textTheme.titleMedium),
+        subtitle: Row(
+          children: [
+            if (isVoice) ...[
+              Icon(Icons.graphic_eq_rounded, size: 16, color: scheme.tertiary),
+              const SizedBox(width: AppSpacing.xs),
+            ],
+            Expanded(
+              child: Text(
+                _previewText(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+        trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MessageThreadScreen(
+              connectionId: conversation.connectionId,
+              currentUserId: currentUserId,
+              otherUserId: conversation.otherUserId,
+              otherDisplayName: conversation.displayName,
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.photoUrl});
+
+  final String? photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    if (photoUrl != null) {
+      return CircleAvatar(radius: 26, backgroundImage: NetworkImage(photoUrl!));
+    }
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(gradient: brandGradient(), shape: BoxShape.circle),
+      child: const Icon(Icons.person_rounded, color: Colors.white),
     );
   }
 }

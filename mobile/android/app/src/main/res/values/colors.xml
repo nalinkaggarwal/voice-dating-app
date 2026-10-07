@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Lolly.ai brand plum; matches AppTheme.plum in lib/core/theme/app_theme.dart -->
+    <color name="splash_background">#5B2A86</color>
+    <color name="brand_plum">#5B2A86</color>
+    <color name="brand_magenta">#B83A8C</color>
+</resources>

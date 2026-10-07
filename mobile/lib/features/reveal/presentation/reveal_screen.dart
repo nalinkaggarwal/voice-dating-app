@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/branding.dart';
+import '../../../shared/widgets/empty_state.dart';
 import '../../live_snap/presentation/live_snap_call_screen.dart';
 import '../../trust_safety/domain/report_reason.dart';
 import '../../trust_safety/presentation/trust_safety_actions.dart';
@@ -87,68 +90,98 @@ class _RevealBody extends StatelessWidget {
                 ),
               ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: _buildBody(context, state),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: _buildBody(context, state),
+        ),
       ),
     );
   }
 
   Widget _buildBody(BuildContext context, RevealState state) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     if (state.isLoading && state.profile == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
     if (state.errorMessage != null && state.profile == null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(state.errorMessage!, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            OutlinedButton(
-              onPressed: () => state.load(connectionId),
-              child: const Text('Try again'),
-            ),
-          ],
-        ),
+      return EmptyState(
+        icon: Icons.wifi_off_rounded,
+        title: "Couldn't load your match",
+        body: state.errorMessage,
+        action: OutlinedButton(onPressed: () => state.load(connectionId), child: const Text('Try again')),
       );
     }
 
     final profile = state.profile;
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        CircleAvatar(
-          radius: 72,
-          backgroundImage: profile?.photoUrl != null ? NetworkImage(profile!.photoUrl!) : null,
-          child: profile?.photoUrl == null ? const Icon(Icons.person, size: 64) : null,
+        Expanded(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: AspectRatio(
+                aspectRatio: 4 / 5,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  child: profile?.photoUrl != null
+                      ? Image.network(profile!.photoUrl!, fit: BoxFit.cover)
+                      : DecoratedBox(
+                          decoration: BoxDecoration(gradient: brandGradient()),
+                          child: const Icon(Icons.person_rounded, size: 96, color: Colors.white),
+                        ),
+                ),
+              ),
+            ),
+          ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.lg),
         Text(
           profile?.displayName ?? 'Your match',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Next: a quick live video check with each other before you unlock chat.',
           textAlign: TextAlign.center,
+          style: theme.textTheme.headlineMedium,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.videocam_rounded, size: 18, color: scheme.tertiary),
+            const SizedBox(width: AppSpacing.xs),
+            Flexible(
+              child: Text(
+                'Next: a quick live video check together. Then chat unlocks.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ),
+          ],
         ),
         if (state.errorMessage != null) ...[
-          const SizedBox(height: 16),
-          Text(state.errorMessage!, style: const TextStyle(color: Colors.red)),
+          const SizedBox(height: AppSpacing.md),
+          Text(state.errorMessage!, textAlign: TextAlign.center, style: TextStyle(color: scheme.error)),
         ],
-        const SizedBox(height: 32),
+        const SizedBox(height: AppSpacing.lg),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            OutlinedButton(
-              onPressed: state.isLoading ? null : () => _decline(context, state),
-              child: const Text('Not interested'),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: state.isLoading ? null : () => _decline(context, state),
+                child: const Text('Not for me'),
+              ),
             ),
-            FilledButton(
-              onPressed: state.isLoading || profile == null ? null : () => _startLiveSnap(context, profile.userId),
-              child: const Text('Start Live Snap'),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              flex: 3,
+              child: FilledButton.icon(
+                style: AppTheme.accentButton(scheme),
+                onPressed: state.isLoading || profile == null ? null : () => _startLiveSnap(context, profile.userId),
+                icon: const Icon(Icons.videocam_rounded),
+                label: const Text('Start Live Snap'),
+              ),
             ),
           ],
         ),

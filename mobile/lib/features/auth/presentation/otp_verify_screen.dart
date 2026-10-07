@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/theme/app_theme.dart';
 import '../application/auth_state.dart';
 
 enum _VerifyMode { signup, login }
@@ -39,35 +40,67 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = context.watch<AuthState>();
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Enter your code')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
+      appBar: AppBar(),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.xl),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('We sent you a 6-digit code. It expires in a few minutes.'),
-            const SizedBox(height: 24),
+            Container(
+              width: 64,
+              height: 64,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: scheme.primaryContainer, shape: BoxShape.circle),
+              child: Icon(Icons.sms_rounded, color: scheme.onPrimaryContainer, size: 30),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text('Enter your code', style: theme.textTheme.headlineMedium),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'We sent a 6-digit code to ${widget.isSignup ? 'the number or email you just entered' : 'you'}. '
+              'It expires in a few minutes.',
+              style: theme.textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: AppSpacing.xl),
             TextField(
               controller: _codeController,
               keyboardType: TextInputType.number,
               maxLength: 6,
-              decoration: const InputDecoration(labelText: 'Code'),
+              autofocus: true,
+              textAlign: TextAlign.center,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(authState),
+              style: theme.textTheme.headlineMedium?.copyWith(letterSpacing: 12, fontWeight: FontWeight.w700),
+              decoration: const InputDecoration(
+                counterText: '',
+                hintText: '••••••',
+                contentPadding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              ),
             ),
             if (authState.errorMessage != null) ...[
-              const SizedBox(height: 8),
-              Text(authState.errorMessage!, style: const TextStyle(color: Colors.red)),
+              const SizedBox(height: AppSpacing.sm),
+              Text(authState.errorMessage!, style: TextStyle(color: scheme.error)),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             FilledButton(
+              style: AppTheme.accentButton(scheme),
               onPressed: authState.isLoading ? null : () => _submit(authState),
               child: authState.isLoading
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
                   : const Text('Verify'),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              child: const Text('Use a different number or email'),
             ),
           ],
         ),

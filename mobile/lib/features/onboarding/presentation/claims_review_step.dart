@@ -69,7 +69,7 @@ class ClaimsReviewStep extends StatelessWidget {
               ),
             ),
             if (state.errorMessage != null) ...[
-              Text(state.errorMessage!, style: const TextStyle(color: Colors.red)),
+              Text(state.errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
               const SizedBox(height: 8),
             ],
             FilledButton(

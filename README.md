@@ -54,7 +54,7 @@ place so it doesn't get lost in the per-section detail below:
 | WP6 (Moderation & Block) | ✅ pass | ✅ pass (pure `wireValue` mapping only — see below) | ✅ clean / APK builds | ❌ not run | ❌ never exercised |
 | WP7 (Push notifications) | ✅ pass | ✅ pass (pure `PushPayload` parsing/routing only — see below) | ✅ clean / APK builds (without `google-services.json`) | ❌ launched only, push off (no Firebase config) | ❌ never exercised |
 
-Current totals (all of WP1-7 together): **261 backend tests, 46 mobile
+Current totals (all of WP1-7 together): **261 backend tests, 54 mobile
 tests, 0 analyzer issues** — see each module's own test file for the
 per-feature breakdown; these numbers aren't re-split by work package
 below.
@@ -752,11 +752,66 @@ first real test of both, not something this session could verify further.
 See "Verification status" near the top of this file for the consolidated
 summary of exactly what has and hasn't been confirmed.
 
+### Visual identity, splash and launcher icon ("Afterglow", 2026-10-07)
+
+A refresh in the same spirit as visitorX's, with an identity built for
+*hear before you see* rather than borrowed from it:
+
+- **Colour** (`lib/core/theme/app_theme.dart`): **plum → magenta**
+  (`#5B2A86` → `#B83A8C`) is the brand gradient — after-dark, a little
+  mysterious, the part of someone you haven't seen yet. It seeds the whole
+  Material 3 scheme (tonal surfaces, chips, app bar), light *and* dark
+  (`themeMode: system`). **Coral** (`#FF7A59`) is the voice: reserved for
+  waveforms, the mark's lollipop head, and the ONE call-to-action per
+  screen (`AppTheme.accentButton`), so it always means "this is the
+  moment". Pill buttons, generous radii, `AppSpacing`/`AppRadius` scales
+  instead of ad-hoc numbers, error text on `colorScheme.error` everywhere
+  (no more `Colors.red`).
+- **Mark** (`lib/core/theme/branding.dart`, `LollyMark`): a lollipop whose
+  head holds a five-bar sound wave — the name and the motto in one shape.
+  Drawn by a `CustomPainter`, not an asset, with a `progress` input that
+  plays its build-in (head pops, stick draws, bars rise in sequence).
+  `AppWordmark` sets "Lolly.ai" with the ".ai" in coral; `VoiceWaveform`
+  is the breathing-bars cue used beside every play button.
+- **Splash** (`lib/core/splash/brand_splash.dart`): the Android window is
+  plain brand plum (`res/values/colors.xml`, `launch_background.xml`,
+  `values-v31` with a transparent system-splash icon), and the animation
+  itself runs in Flutter above the Navigator (`MaterialApp.builder`): the
+  mark builds in, wordmark and tagline lift under it, then the overlay
+  fades to reveal whatever the auth bootstrap resolved to underneath.
+  Same reasoning as visitorX: the OS dismisses its own splash on
+  Flutter's first frame, too early to see anything. Plays once per
+  process and resumes from elapsed wall-clock time on start-up rebuilds
+  (unit-tested with an injectable clock).
+- **Launcher icon**: rendered *from the same painter* by
+  `tool/brand/render_launcher_icons_test.dart` (`flutter test
+  tool/brand/...`), which writes the legacy `ic_launcher.png` tiles and
+  the adaptive `ic_launcher_foreground.png` layers for every density; the
+  adaptive background is the gradient in
+  `res/drawable/ic_launcher_background.xml`. Re-run it whenever the mark
+  changes — the icon can never drift from the in-app brand.
+- **Screens touched** (widgets only, no state/business logic): auth entry
+  (gradient hero + pill toggles + coral CTA), OTP, discovery (today's-voice
+  card with waveform header, round Pass/Interested actions), match
+  (full-bleed gradient), reveal (photo card), conversations (tiles,
+  gradient avatar fallback), message thread (asymmetric bubbles, pill
+  composer), onboarding completion, placeholders, and the shared
+  `EmptyState` used for every empty/error/coming-soon state.
+
+Verified: `flutter analyze` 0 issues, 54 mobile tests (theme, mark
+painter, wordmark, waveform, splash sequence + resume), debug APK built
+(app + new adaptive icon). The phone that was attached earlier in the day
+had been unplugged by the time this build finished, so the refreshed UI
+and the animated splash have NOT yet been seen on a real device — first
+`flutter run` is the owed check.
+
 ### Structure
 
 ```
 lib/
-  core/       app config (dart-define based), theming, a single AppException type
+  core/       app config (dart-define based), theme + branding (Afterglow,
+              see below), brand splash, push notifications, a single
+              AppException type
   shared/     API client (auto token-refresh on 401, single retry), secure
               token storage (flutter_secure_storage, never SharedPreferences),
               the User model

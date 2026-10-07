@@ -104,7 +104,7 @@ class _VoiceRecordingStepState extends State<VoiceRecordingStep> {
             if (_phase == _RecordingPhase.recording)
               FilledButton.icon(
                 onPressed: _stopRecording,
-                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
                 icon: const Icon(Icons.stop),
                 label: const Text('Stop'),
               ),
@@ -131,7 +131,7 @@ class _VoiceRecordingStepState extends State<VoiceRecordingStep> {
             ],
             if (state.errorMessage != null) ...[
               const SizedBox(height: 16),
-              Text(state.errorMessage!, style: const TextStyle(color: Colors.red)),
+              Text(state.errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
           ],
         ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/branding.dart';
 import '../../reveal/presentation/reveal_screen.dart';
 
 /// Mutual-match confirmation, shown right after a decide() call flips a
@@ -15,31 +17,50 @@ class MatchScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.favorite, size: 72, color: Colors.pinkAccent),
-              const SizedBox(height: 16),
-              Text('You matched!', style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 8),
-              const Text(
-                'You\'re both interested. See who it is next.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-              FilledButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => RevealScreen(connectionId: connectionId, currentUserId: currentUserId),
-                  ),
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: brandGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter)),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Spacer(),
+                const Center(child: LollyMark(size: 128, style: LollyMarkStyle.onGradient)),
+                const SizedBox(height: AppSpacing.xl),
+                Text(
+                  "It's a match",
+                  textAlign: TextAlign.center,
+                  style: textTheme.headlineLarge?.copyWith(color: Colors.white),
                 ),
-                child: const Text('See your match'),
-              ),
-            ],
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  "You're both interested. Still no names or photos -- that's the next step, together.",
+                  textAlign: TextAlign.center,
+                  style: textTheme.bodyLarge?.copyWith(color: Colors.white.withValues(alpha: 0.85)),
+                ),
+                const Spacer(),
+                FilledButton(
+                  style: AppTheme.accentButton(scheme),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => RevealScreen(connectionId: connectionId, currentUserId: currentUserId),
+                    ),
+                  ),
+                  child: const Text('See who it is'),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                TextButton(
+                  style: TextButton.styleFrom(foregroundColor: Colors.white),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  child: const Text('Maybe later'),
+                ),
+              ],
+            ),
           ),
         ),
       ),

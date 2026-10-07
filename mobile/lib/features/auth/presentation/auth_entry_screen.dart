@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/branding.dart';
+import '../../../shared/widgets/segmented_pill.dart';
 import '../application/auth_state.dart';
 import '../domain/auth_channel.dart';
 import 'otp_verify_screen.dart';
@@ -67,67 +70,125 @@ class _AuthEntryScreenState extends State<AuthEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = context.watch<AuthState>();
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isEmail = _channel == AuthChannel.email;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Lolly.ai')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: true, label: Text('Sign up')),
-                ButtonSegment(value: false, label: Text('Log in')),
-              ],
-              selected: {_isSignup},
-              onSelectionChanged: (s) => setState(() => _isSignup = s.first),
-            ),
-            const SizedBox(height: 16),
-            SegmentedButton<AuthChannel>(
-              segments: const [
-                ButtonSegment(value: AuthChannel.phone, label: Text('Phone')),
-                ButtonSegment(value: AuthChannel.email, label: Text('Email')),
-              ],
-              selected: {_channel},
-              onSelectionChanged: (s) => setState(() => _channel = s.first),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _identifierController,
-              keyboardType: _channel == AuthChannel.email
-                  ? TextInputType.emailAddress
-                  : TextInputType.phone,
-              decoration: InputDecoration(
-                labelText: _channel == AuthChannel.email ? 'Email' : 'Phone (e.g. +14155552671)',
+      body: Column(
+        children: [
+          const _AuthHero(),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SegmentedPill<bool>(
+                    values: const [true, false],
+                    labels: const ['Sign up', 'Log in'],
+                    selected: _isSignup,
+                    onChanged: (v) => setState(() => _isSignup = v),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  SegmentedPill<AuthChannel>(
+                    values: const [AuthChannel.phone, AuthChannel.email],
+                    labels: const ['Phone', 'Email'],
+                    selected: _channel,
+                    onChanged: (v) => setState(() => _channel = v),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  TextField(
+                    controller: _identifierController,
+                    keyboardType: isEmail ? TextInputType.emailAddress : TextInputType.phone,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _submit(authState),
+                    decoration: InputDecoration(
+                      labelText: isEmail ? 'Email' : 'Phone number',
+                      hintText: isEmail ? 'you@example.com' : '+14155552671',
+                      prefixIcon: Icon(isEmail ? Icons.mail_outline_rounded : Icons.phone_iphone_rounded),
+                    ),
+                  ),
+                  if (_isSignup) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    OutlinedButton.icon(
+                      onPressed: _pickDateOfBirth,
+                      icon: const Icon(Icons.cake_outlined),
+                      label: Text(
+                        _dateOfBirth == null
+                            ? 'Date of birth'
+                            : 'Born ${_dateOfBirth!.toIso8601String().split('T').first}',
+                      ),
+                    ),
+                  ],
+                  if (authState.errorMessage != null) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(authState.errorMessage!, style: TextStyle(color: scheme.error)),
+                  ],
+                  const SizedBox(height: AppSpacing.lg),
+                  FilledButton(
+                    style: AppTheme.accentButton(scheme),
+                    onPressed: authState.isLoading ? null : () => _submit(authState),
+                    child: authState.isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : Text(_isSignup ? 'Send my code' : 'Log in'),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    'No passwords. We send a one-time code to your ${isEmail ? 'inbox' : 'phone'}.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                ],
               ),
             ),
-            if (_isSignup) ...[
-              const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: _pickDateOfBirth,
-                child: Text(
-                  _dateOfBirth == null
-                      ? 'Select date of birth'
-                      : 'DOB: ${_dateOfBirth!.toIso8601String().split('T').first}',
-                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Brand header: mark, wordmark, the motto. Same gradient as the splash so
+/// the hand-over from splash to this screen feels like one surface.
+class _AuthHero extends StatelessWidget {
+  const _AuthHero();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: brandGradient(),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.xl, AppSpacing.lg, AppSpacing.xl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const LollyMark(size: 56, style: LollyMarkStyle.onGradient),
+              const SizedBox(height: AppSpacing.md),
+              const AppWordmark(fontSize: 36, color: Colors.white, accentColor: AppTheme.peach),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                kAppTagline,
+                style: textTheme.titleMedium?.copyWith(color: Colors.white.withValues(alpha: 0.9)),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Voice first. Photos come later, once you both say yes.',
+                style: textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.72)),
               ),
             ],
-            if (authState.errorMessage != null) ...[
-              const SizedBox(height: 8),
-              Text(authState.errorMessage!, style: const TextStyle(color: Colors.red)),
-            ],
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: authState.isLoading ? null : () => _submit(authState),
-              child: authState.isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(_isSignup ? 'Send code' : 'Log in'),
-            ),
-          ],
+          ),
         ),
       ),
     );

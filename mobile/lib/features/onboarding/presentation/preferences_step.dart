@@ -60,7 +60,7 @@ class _PreferencesStepState extends State<PreferencesStep> {
             ),
             if (state.errorMessage != null) ...[
               const SizedBox(height: 8),
-              Text(state.errorMessage!, style: const TextStyle(color: Colors.red)),
+              Text(state.errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
             const SizedBox(height: 24),
             FilledButton(
