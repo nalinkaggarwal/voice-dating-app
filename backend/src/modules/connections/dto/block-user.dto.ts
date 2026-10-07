@@ -1,9 +1,10 @@
 import { IsString, MinLength } from 'class-validator';
 
-// NOTE: no ValidationPipe is registered anywhere in this app (see
-// messaging's send-message.dto.ts for the same caveat) -- these
-// decorators don't actually run yet. ConnectionsController checks for a
-// missing/empty blockedUserId by hand instead of relying on this.
+// Enforced by the global ValidationPipe (src/validation.ts) since the
+// post-WP6 validation pass. Before that, nothing actually rejected a
+// missing/empty blockedUserId -- the old note here claimed the controller
+// did by hand; it did not. ConnectionsService.block() still rejects a
+// self-block itself (that one is business logic, not shape).
 export class BlockUserDto {
   @IsString()
   @MinLength(1)

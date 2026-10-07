@@ -1,12 +1,11 @@
 import { IsEnum, IsInt, IsString, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 import { MessageType } from '@prisma/client';
 
-// NOTE: no ValidationPipe is registered anywhere in this app (checked
-// main.ts/app.module.ts) -- these decorators don't actually run yet, same
-// as every other DTO across WP1-4. MessagingService validates type-
-// specific fields itself (see sendMessage) rather than relying on this.
-// Left here so validation starts working for free the day someone wires
-// up the pipe, instead of needing this file touched too.
+// Enforced by the global ValidationPipe (src/validation.ts) since the
+// post-WP6 validation pass -- a TEXT message without textContent, or a
+// VOICE one over 60s, is now a 400 before it reaches the service.
+// MessagingService.validateSendDto() stays as a second line of defence
+// for any caller that bypasses the HTTP layer.
 export class SendMessageDto {
   @IsEnum(MessageType)
   type!: MessageType;

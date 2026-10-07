@@ -1,9 +1,9 @@
 import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { ReportContext, ReportReason } from '@prisma/client';
 
-// NOTE: no ValidationPipe is registered anywhere in this app (see
-// messaging's send-message.dto.ts for the same caveat) -- ModerationService
-// checks required fields itself rather than relying on these decorators.
+// Enforced by the global ValidationPipe (src/validation.ts) since the
+// post-WP6 validation pass. ModerationService still checks required
+// fields itself too, so a non-HTTP caller gets the same errors.
 export class CreateReportDto {
   @IsString()
   @MinLength(1)

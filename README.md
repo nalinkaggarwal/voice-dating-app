@@ -45,8 +45,8 @@ place so it doesn't get lost in the per-section detail below:
 | WP5 (Chat) | ✅ pass | ✅ pass (`MessageThreadState` fully covered) | ✅ clean / APK builds | ❌ not run | ❌ never exercised |
 | WP6 (Moderation & Block) | ✅ pass | ✅ pass (pure `wireValue` mapping only — see below) | ✅ clean / APK builds | ❌ not run | ❌ never exercised |
 
-Current totals (all of WP1-6 together): **216 backend tests, 37 mobile
-tests, 0 analyzer errors** — see each module's own test file for the
+Current totals (all of WP1-6 together): **233 backend tests, 37 mobile
+tests, 0 analyzer issues** — see each module's own test file for the
 per-feature breakdown; these numbers aren't re-split by work package
 below.
 
@@ -104,13 +104,13 @@ cd backend
 cp .env.example .env          # fill in real secrets for anything beyond local dev
 npm install
 npx prisma generate
-npx prisma migrate dev --name init
+npx prisma migrate dev           # applies the committed backend/prisma/migrations/
 npm run start:dev
 ```
 
 Tests: `npm test` (Vitest, all offline — Prisma/OTP-delivery/queues are
 mocked, no live DB or Redis needed). Lint: `npm run lint`. Type-check:
-`npx tsc --noEmit`. **216 tests, all passing** as of WP6.
+`npx tsc --noEmit`. **233 tests, all passing** as of the post-WP6 hardening pass.
 
 ### API versioning
 
@@ -365,17 +365,16 @@ alone for correctness (same "ask for the truth, don't trust what you
 think you already have" reasoning as `OnboardingState.resumeFrom`/
 `GET /ai-profile/voice/latest`).
 
-**Discovered while building this, not introduced by it:** there is no
-`ValidationPipe` registered anywhere in this app (`main.ts`/
-`app.module.ts`) — every DTO's `class-validator` decorators across WP1-4
-have been inert the whole time; Nest never actually runs them.
-`MessagingService.validateSendDto()` enforces WP5's own type-specific
-required fields (TEXT needs `textContent`, VOICE needs `audioUrl` +
-`audioDurationSec` capped at 60s) by hand rather than relying on the DTO
-decorators, since those currently do nothing. Wiring up the pipe
-app-wide would touch every existing endpoint's behavior at once —
-deliberately left alone here as out of scope for this work package, but
-worth fixing as its own pass.
+**Discovered while building this, not introduced by it:** at the time of
+WP5 there was no `ValidationPipe` registered anywhere in this app, so
+every DTO's `class-validator` decorators across WP1-5 were inert; Nest
+never ran them. `MessagingService.validateSendDto()` was written to
+enforce WP5's type-specific required fields (TEXT needs `textContent`,
+VOICE needs `audioUrl` + `audioDurationSec` capped at 60s) by hand for
+that reason. **Fixed in the post-WP6 hardening pass** (see that section
+below): the pipe is now global, so a bad body is a 400 before it reaches
+the service. `validateSendDto()` stays as a second line of defence for
+any non-HTTP caller.
 
 **Explicitly out of scope for WP5**: the conversation list has no live
 updates of its own (REST-only, refreshed on open/pull-to-refresh) — only
@@ -502,6 +501,46 @@ addition) and no in-call reporting UI beyond the single Live Snap report
 action described above (no moderator review tooling, no automated
 action on a report — `actionReport()` is a manual admin decision every
 time).
+
+### Post-WP6 hardening pass
+
+Four fixes that fell out of reviewing the WP6 tree, none of them new
+product scope:
+
+- **Global `ValidationPipe`** (`src/validation.ts`, registered in
+  `main.ts` and mirrored in `test/app.e2e-spec.ts`). Every DTO's
+  `class-validator` decorators were inert from WP1 through WP6 -- see the
+  Chat section's note. Policy: `whitelist` on (unknown body fields are
+  stripped), `forbidNonWhitelisted` off (an older/newer mobile build
+  sending one extra field must not 400), `transform` on (DTOs arrive as
+  class instances so `@ValidateIf` works), implicit primitive conversion
+  off (`"18"` must not pass `@IsInt()`), `stopAtFirstError` on (one
+  message per bad property, which is what `api_client.dart` joins into a
+  single line). `src/validation.spec.ts` runs the exact pipe `main.ts`
+  registers against the real DTO classes -- including the shapes the
+  mobile client actually sends (date-only `dateOfBirth`, omitted optional
+  preferences) -- since the per-module unit tests never cross the HTTP
+  layer. The hand-rolled checks in `MessagingService`,
+  `ModerationService` and `ConnectionsService` stay in place as a second
+  line of defence; the DTO comments that said "the pipe doesn't exist"
+  are updated.
+- **Committed baseline migration** (`backend/prisma/migrations/`).
+  `schema.prisma` had been edited through six work packages with no
+  migration history checked in, so a fresh clone had nothing to
+  `migrate deploy`. `20261007000000_init` is the full schema as of WP6,
+  generated offline with `prisma migrate diff --from-empty`, plus the
+  `migration_lock.toml` Prisma expects. Local setup is now plain
+  `npx prisma migrate dev`; future schema changes get their own
+  migration the normal way. Not yet applied to a real Postgres from this
+  session -- Docker wasn't available -- so the first `migrate dev` against
+  a live DB is the verification step still owed.
+- **CI never ran on push.** `.github/workflows/ci.yml` triggered on
+  `push: branches: [main]`, but this repo's branch is `master`, so only
+  pull requests ever exercised it. Now `[master]`.
+- **Analyzer clean, not just error-free.** The 7 `flutter analyze` info
+  lints (deprecated `RadioListTile.groupValue`/`onChanged` -> a
+  `RadioGroup` ancestor, an unnecessary `dart:typed_data` import, and
+  `const`/quote style) are fixed; `flutter analyze` reports 0 issues.
 
 ### Module structure
 
@@ -769,9 +808,6 @@ create` step required.
   today both users need the app open (with a socket connected) at the
   same time for either to work at all. This is the single biggest gap
   between "built" and "shippable" across WP4 and WP5 both.
-- Wire up a global `ValidationPipe` (see the Chat section's own note) --
-  every DTO's `class-validator` decorators across WP1-6 currently do
-  nothing; each service has had to hand-roll its own validation instead.
 - An admin UI for the moderation queue (WP6 is REST-only, per an explicit
   decision not to build more than a small addition without asking first)
   and moderator tooling beyond a manual `actionReport()` decision per

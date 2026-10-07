@@ -93,7 +93,7 @@ class _VoiceRecordingStepState extends State<VoiceRecordingStep> {
               const Text('Microphone access is needed to record your voice intro.'),
               const SizedBox(height: 16),
               OutlinedButton(onPressed: _requestMicPermission, child: const Text('Try again')),
-              TextButton(onPressed: openAppSettings, child: const Text('Open app settings')),
+              const TextButton(onPressed: openAppSettings, child: Text('Open app settings')),
             ],
             if (_phase == _RecordingPhase.idle)
               FilledButton.icon(

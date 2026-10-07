@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from './../src/app.module.js';
+import { createValidationPipe } from './../src/validation.js';
 
 describe('AppController (e2e)', () => {
   // Untyped generic -- the installed supertest version doesn't expose a
@@ -14,6 +15,7 @@ describe('AppController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(createValidationPipe());
     await app.init();
   });
 

@@ -99,10 +99,10 @@ class _DiscoveryBody extends StatelessWidget {
 
     final entry = state.currentEntry;
     if (entry == null) {
-      return Center(
+      return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
+          children: [
             Icon(Icons.hourglass_empty, size: 48),
             SizedBox(height: 16),
             Text(
