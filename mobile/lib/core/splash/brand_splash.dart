@@ -12,8 +12,10 @@ import '../theme/branding.dart';
 /// Lives in Flutter rather than Android's splash API because the OS
 /// dismisses its splash on Flutter's first frame (about 300 ms warm),
 /// too soon for any animation to be seen. The OS splash is a plain
-/// brand-plum screen (android res/values/colors.xml, same colour as
-/// AppTheme.plum), so the hand-over into this overlay is seamless.
+/// magenta screen (android res/values/colors.xml, same colour as
+/// AppTheme.magenta, the Bloom gradient's first stop), so the hand-over
+/// into this overlay is seamless. main() calls runApp before any other
+/// start-up work so this appears as early as possible.
 ///
 /// Plays once per process. Start-up rebuilds (the MaterialApp re-rooting
 /// as auth state resolves) recreate this widget; a fresh instance resumes

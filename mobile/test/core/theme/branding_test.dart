@@ -5,17 +5,16 @@ import 'package:lolly/core/theme/branding.dart';
 
 void main() {
   group('AppTheme', () {
-    test('builds light and dark schemes seeded from brand plum, with coral as the accent', () {
-      final light = AppTheme.light;
-      final dark = AppTheme.dark;
-      expect(light.brightness, Brightness.light);
-      expect(dark.brightness, Brightness.dark);
-      expect(light.useMaterial3, isTrue);
-      expect(light.colorScheme.tertiary, AppTheme.coral);
-      expect(dark.colorScheme.tertiary, AppTheme.coral);
-      // Primary must not be the accent: the accent is reserved for CTAs
-      // and the voice cue, everything else is plum-derived.
-      expect(light.colorScheme.primary, isNot(AppTheme.coral));
+    test('is dark-only on the ink canvas, magenta primary, coral as the voice accent', () {
+      // "Midnight Bloom" is dark-only: both getters return the dark theme.
+      for (final theme in [AppTheme.light, AppTheme.dark]) {
+        expect(theme.brightness, Brightness.dark);
+        expect(theme.useMaterial3, isTrue);
+        expect(theme.scaffoldBackgroundColor, AppTheme.ink);
+        expect(theme.colorScheme.primary, AppTheme.magenta);
+        expect(theme.colorScheme.tertiary, AppTheme.coral);
+        expect(theme.textTheme.bodyLarge?.fontFamily, AppTheme.fontFamily);
+      }
     });
   });
 

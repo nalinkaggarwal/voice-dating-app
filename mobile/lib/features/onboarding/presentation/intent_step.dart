@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/ui_kit.dart';
 import '../application/onboarding_state.dart';
+import 'onboarding_progress.dart';
 
-const _intentOptions = ['LONG_TERM', 'SHORT_TERM', 'NOT_SURE_YET'];
+/// Backend enum value -> (emoji, title, subtitle).
+const _intentOptions = <String, (String, String, String)>{
+  'LONG_TERM': ('💞', 'Something serious', 'Looking for a real, long-term relationship'),
+  'SHORT_TERM': ('🔥', 'Something casual', 'Fun dates, good vibes, no pressure'),
+  'NOT_SURE_YET': ('🌱', 'Not sure yet', 'Open to seeing where things go'),
+};
 
 class IntentStep extends StatefulWidget {
   const IntentStep({super.key});
@@ -18,46 +26,30 @@ class _IntentStepState extends State<IntentStep> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<OnboardingState>();
-    return Scaffold(
-      appBar: AppBar(title: const Text('What are you looking for?')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            RadioGroup<String>(
-              groupValue: _selected,
-              onChanged: (value) => setState(() => _selected = value),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final option in _intentOptions)
-                    RadioListTile<String>(
-                      title: Text(option.replaceAll('_', ' ')),
-                      value: option,
-                    ),
-                ],
-              ),
+    return OnboardingScaffold(
+      step: onboardingStepNumber(state.currentStep),
+      totalSteps: kOnboardingStepCount,
+      emoji: '🎯',
+      title: 'What are you looking for?',
+      subtitle: 'Be honest. It helps us match you with people who want the same thing.',
+      errorMessage: state.errorMessage,
+      primaryLabel: 'Continue',
+      loading: state.isLoading,
+      onPrimary: _selected == null ? null : () => state.submitIntent(_selected!),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final entry in _intentOptions.entries) ...[
+            ChoiceCard(
+              emoji: entry.value.$1,
+              title: entry.value.$2,
+              subtitle: entry.value.$3,
+              selected: _selected == entry.key,
+              onTap: () => setState(() => _selected = entry.key),
             ),
-            if (state.errorMessage != null) ...[
-              const SizedBox(height: 8),
-              Text(state.errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            ],
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: state.isLoading || _selected == null
-                  ? null
-                  : () => state.submitIntent(_selected!),
-              child: state.isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Continue'),
-            ),
+            const SizedBox(height: AppSpacing.sm + 4),
           ],
-        ),
+        ],
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/error/app_exception.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/ui_kit.dart';
 import '../data/trust_safety_repository.dart';
 import '../domain/report_reason.dart';
 
@@ -17,16 +19,32 @@ Future<bool> confirmAndBlockUser(
 }) async {
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Block this person?'),
-      content: const Text(
-        "They won't be able to message you, start a Live Snap call, or see your profile again. This can't be undone from here.",
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Block')),
-      ],
-    ),
+    builder: (dialogContext) {
+      final error = Theme.of(dialogContext).colorScheme.error;
+      return AlertDialog(
+        scrollable: true,
+        icon: _DialogBadge(icon: Icons.block_rounded, color: error),
+        title: const Text('Block this person?', textAlign: TextAlign.center),
+        content: const Text(
+          "They won't be able to message you, start a Live Snap call, or see your profile again. This can't be undone from here.",
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actionsPadding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(120, 48),
+              backgroundColor: error,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Block'),
+          ),
+        ],
+      );
+    },
   );
   if (confirmed != true || !context.mounted) return false;
 
@@ -116,46 +134,89 @@ class _ReportDialogState extends State<_ReportDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
     return AlertDialog(
-      title: const Text('Report'),
+      // Scrollable so the keyboard (details field) can never push the
+      // dialog into an overflow.
+      scrollable: true,
+      icon: const _DialogBadge(icon: Icons.flag_rounded, color: AppTheme.coral),
+      title: const Text('Report', textAlign: TextAlign.center),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DropdownButtonFormField<ReportReason>(
-            initialValue: _reason,
-            decoration: const InputDecoration(labelText: 'Reason'),
-            items: ReportReason.values
-                .map((reason) => DropdownMenuItem(value: reason, child: Text(reason.label)))
-                .toList(),
-            onChanged: _isSubmitting ? null : (value) => setState(() => _reason = value!),
+          Text('Reason', style: textTheme.titleSmall?.copyWith(color: AppTheme.textMuted)),
+          const SizedBox(height: AppSpacing.sm + 2),
+          // Same single-choice reason picker as before, as pills.
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              for (final reason in ReportReason.values)
+                ChoicePill(
+                  label: reason.label,
+                  selected: reason == _reason,
+                  onTap: _isSubmitting ? () {} : () => setState(() => _reason = reason),
+                ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.lg),
           TextField(
             controller: _detailsController,
             enabled: !_isSubmitting,
             maxLines: 3,
             maxLength: 2000,
-            decoration: const InputDecoration(labelText: 'Details (optional)'),
+            decoration: const InputDecoration(labelText: 'Details (optional)', alignLabelWithHint: true),
           ),
           if (_errorMessage != null) ...[
-            const SizedBox(height: 8),
-            Text(_errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            const SizedBox(height: AppSpacing.sm),
+            ErrorBanner(_errorMessage!),
           ],
         ],
       ),
+      actionsAlignment: MainAxisAlignment.center,
+      actionsPadding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
       actions: [
         TextButton(
           onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(false),
           child: const Text('Cancel'),
         ),
         FilledButton(
+          style: AppTheme.accentButton(Theme.of(context).colorScheme).copyWith(
+            minimumSize: const WidgetStatePropertyAll(Size(120, 48)),
+          ),
           onPressed: _isSubmitting ? null : _submit,
           child: _isSubmitting
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
               : const Text('Submit'),
         ),
       ],
+    );
+  }
+}
+
+/// Round tinted icon heading a safety dialog.
+class _DialogBadge extends StatelessWidget {
+  const _DialogBadge({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: 0.14),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Icon(icon, color: color, size: 30),
     );
   }
 }

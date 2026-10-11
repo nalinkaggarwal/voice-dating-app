@@ -13,6 +13,9 @@ class SignalingClient {
   io.Socket? _socket;
 
   Future<void> connect() async {
+    // Demo build: no signaling server. The call screen shows your own
+    // camera and "waiting for your match"; End call -> confirm works.
+    if (AppConfig.demoMode) return;
     final token = await TokenStorage().readAccessToken();
     _socket = io.io(
       AppConfig.apiBaseUrl,

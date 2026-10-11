@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -10,11 +9,14 @@ import 'package:record/record.dart';
 
 import '../../../core/notifications/push_notifications.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/branding.dart';
+import '../../../shared/widgets/ui_kit.dart';
 import '../../../shared/widgets/voice_clip_player.dart';
 import '../../trust_safety/domain/report_reason.dart';
 import '../../trust_safety/presentation/trust_safety_actions.dart';
 import '../application/message_thread_state.dart';
 import '../domain/message.dart';
+import '../../../shared/widgets/media_sources.dart';
 
 const _maxVoiceMessageSeconds = 60;
 
@@ -148,10 +150,28 @@ class _MessageThreadBodyState extends State<_MessageThreadBody> {
     final state = context.watch<MessageThreadState>();
 
     return Scaffold(
+      backgroundColor: AppTheme.ink,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text(widget.title),
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            _TitleAvatar(name: widget.title),
+            const SizedBox(width: AppSpacing.sm + 4),
+            Flexible(
+              child: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        ),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            color: AppTheme.ink.withValues(alpha: 0.72),
+            border: const Border(bottom: BorderSide(color: AppTheme.stroke)),
+          ),
+        ),
         actions: [
           PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
             onSelected: (value) {
               if (value == 'report') {
                 showReportDialog(
@@ -171,16 +191,21 @@ class _MessageThreadBodyState extends State<_MessageThreadBody> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(child: _buildMessageList(context, state)),
-          if (state.errorMessage != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(state.errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            ),
-          _buildComposer(context, state),
-        ],
+      body: AuroraBackground(
+        intensity: 0.4,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Expanded(child: _buildMessageList(context, state)),
+              if (state.errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.xs),
+                  child: ErrorBanner(state.errorMessage!),
+                ),
+              _buildComposer(context, state),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -190,17 +215,31 @@ class _MessageThreadBodyState extends State<_MessageThreadBody> {
       return const Center(child: CircularProgressIndicator());
     }
     if (state.messages.isEmpty) {
+      final textTheme = Theme.of(context).textTheme;
       return Center(
-        child: Text(
-          'Say hello!',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const LollyMark(size: 72),
+              const SizedBox(height: AppSpacing.md),
+              Text('Say hello!', style: textTheme.headlineSmall),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'You heard each other first. A voice note is a great opener.',
+                textAlign: TextAlign.center,
+                style: textTheme.bodyMedium,
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return ListView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md - 4, AppSpacing.sm, AppSpacing.md - 4, AppSpacing.sm),
       itemCount: state.messages.length + (state.hasMoreHistory ? 1 : 0),
       itemBuilder: (context, index) {
         if (state.hasMoreHistory && index == 0) {
@@ -214,12 +253,35 @@ class _MessageThreadBodyState extends State<_MessageThreadBody> {
     );
   }
 
+  /// The rounded composer bar every phase shares, so swapping between
+  /// typing / recording / permission-denied doesn't jump the layout.
+  Widget _composerShell({required Widget child}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.sm + 2, AppSpacing.xs, AppSpacing.sm + 2, AppSpacing.sm + 2),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 60),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppTheme.surface1.withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(color: AppTheme.stroke),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 8)),
+          ],
+        ),
+        child: child,
+      ),
+    );
+  }
+
   Widget _buildComposer(BuildContext context, MessageThreadState state) {
     if (_recordingPhase == _RecordingPhase.permissionDenied) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Row(
+      return _composerShell(
+        child: const Row(
           children: [
+            SizedBox(width: AppSpacing.sm + 2),
+            Icon(Icons.mic_off_rounded, color: AppTheme.textMuted, size: 20),
+            SizedBox(width: AppSpacing.sm),
             Expanded(child: Text('Microphone access is needed for voice messages.')),
             TextButton(onPressed: openAppSettings, child: Text('Settings')),
           ],
@@ -228,15 +290,24 @@ class _MessageThreadBodyState extends State<_MessageThreadBody> {
     }
 
     if (_recordingPhase == _RecordingPhase.recording) {
-      return Padding(
-        padding: const EdgeInsets.all(12),
+      final error = Theme.of(context).colorScheme.error;
+      return _composerShell(
         child: Row(
           children: [
-            Icon(Icons.fiber_manual_record, color: Theme.of(context).colorScheme.error),
-            const SizedBox(width: 8),
-            const Expanded(child: Text('Recording... (sends automatically at 60s)')),
+            const SizedBox(width: AppSpacing.sm + 2),
+            Icon(Icons.fiber_manual_record, color: error, size: 16),
+            const SizedBox(width: AppSpacing.sm),
+            const VoiceWaveform(active: true, barCount: 9, height: 24, barWidth: 3, gap: 3, color: AppTheme.coral),
+            const SizedBox(width: AppSpacing.sm + 2),
+            const Expanded(
+              child: Text(
+                'Recording... (sends automatically at 60s)',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             IconButton(
-              icon: Icon(Icons.stop_circle_rounded, color: Theme.of(context).colorScheme.error),
+              icon: Icon(Icons.stop_circle_rounded, color: error, size: 34),
               onPressed: _stopAndSendRecording,
             ),
           ],
@@ -244,40 +315,113 @@ class _MessageThreadBodyState extends State<_MessageThreadBody> {
       );
     }
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _textController,
-                enabled: !state.isSending,
-                decoration: InputDecoration(
-                  hintText: 'Message',
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.xl), borderSide: BorderSide.none),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.xl), borderSide: BorderSide.none),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.xl), borderSide: BorderSide.none),
-                ),
-                onSubmitted: (_) => _sendText(),
+    return _composerShell(
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Record a voice message',
+            icon: const Icon(Icons.mic_rounded),
+            onPressed: state.isSending ? null : _startRecording,
+            style: IconButton.styleFrom(
+              fixedSize: const Size.square(46),
+              backgroundColor: AppTheme.surface3,
+              foregroundColor: AppTheme.coralLight,
+              disabledBackgroundColor: AppTheme.surface2,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: TextField(
+              controller: _textController,
+              enabled: !state.isSending,
+              minLines: 1,
+              maxLines: 4,
+              textInputAction: TextInputAction.send,
+              decoration: const InputDecoration(
+                hintText: 'Message',
+                isDense: true,
+                filled: false,
+                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
               ),
+              onSubmitted: (_) => _sendText(),
             ),
-            const SizedBox(width: 4),
-            IconButton.filledTonal(
-              tooltip: 'Record a voice message',
-              icon: const Icon(Icons.mic_rounded),
-              onPressed: state.isSending ? null : _startRecording,
-            ),
-            IconButton.filled(
-              tooltip: 'Send',
-              icon: state.isSending
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.send_rounded),
-              onPressed: state.isSending ? null : _sendText,
-            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          _SendButton(isSending: state.isSending, onPressed: state.isSending ? null : _sendText),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bloom-gradient round send button with the spinner swapped in while a
+/// send is in flight.
+class _SendButton extends StatelessWidget {
+  const _SendButton({required this.isSending, required this.onPressed});
+
+  final bool isSending;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Send',
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: brandGradient(),
+          boxShadow: [
+            BoxShadow(color: AppTheme.magenta.withValues(alpha: 0.4), blurRadius: 16, spreadRadius: -4),
           ],
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: Center(
+              child: isSending
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Initial-in-a-gradient-disc beside the name in the app bar.
+class _TitleAvatar extends StatelessWidget {
+  const _TitleAvatar({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = name.trim().isEmpty ? '?' : name.trim().characters.first.toUpperCase();
+    return Container(
+      width: 38,
+      height: 38,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(gradient: brandGradient(), shape: BoxShape.circle),
+      child: Text(
+        initial,
+        style: const TextStyle(
+          fontFamily: AppTheme.fontFamily,
+          fontWeight: FontWeight.w800,
+          fontSize: 16,
+          color: Colors.white,
         ),
       ),
     );
@@ -292,14 +436,12 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = isMine ? scheme.primary : scheme.surfaceContainerHigh;
-    final foreground = isMine ? scheme.onPrimary : scheme.onSurface;
+    final foreground = isMine ? Colors.white : AppTheme.textPrimary;
     final radius = BorderRadius.only(
-      topLeft: const Radius.circular(AppRadius.lg),
-      topRight: const Radius.circular(AppRadius.lg),
-      bottomLeft: Radius.circular(isMine ? AppRadius.lg : AppRadius.xs),
-      bottomRight: Radius.circular(isMine ? AppRadius.xs : AppRadius.lg),
+      topLeft: const Radius.circular(AppRadius.lg - 2),
+      topRight: const Radius.circular(AppRadius.lg - 2),
+      bottomLeft: Radius.circular(isMine ? AppRadius.lg - 2 : AppRadius.xs),
+      bottomRight: Radius.circular(isMine ? AppRadius.xs : AppRadius.lg - 2),
     );
 
     return Align(
@@ -308,18 +450,36 @@ class _MessageBubble extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 3),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        decoration: BoxDecoration(color: color, borderRadius: radius),
+        decoration: BoxDecoration(
+          gradient: isMine ? brandGradient() : null,
+          color: isMine ? null : AppTheme.surface2,
+          borderRadius: radius,
+          border: isMine ? null : Border.all(color: AppTheme.stroke),
+          boxShadow: isMine
+              ? [
+                  BoxShadow(
+                    color: AppTheme.magenta.withValues(alpha: 0.28),
+                    blurRadius: 16,
+                    spreadRadius: -6,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
+        ),
         child: message.type == MessageType.voice && message.audioUrl != null
             ? Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   VoiceClipPlayer(
-                    source: UrlSource(message.audioUrl!),
+                    source: audioSourceFor(message.audioUrl!),
                     iconSize: 22,
-                    tint: isMine ? scheme.onPrimary : null,
+                    tint: isMine ? Colors.white : null,
                   ),
                   const SizedBox(width: 8),
-                  Text('${message.audioDurationSec ?? 0}s', style: TextStyle(color: foreground)),
+                  Text(
+                    '${message.audioDurationSec ?? 0}s',
+                    style: TextStyle(color: foreground, fontWeight: FontWeight.w600),
+                  ),
                   if (isMine) _StatusIcon(message: message),
                 ],
               )
@@ -327,7 +487,12 @@ class _MessageBubble extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Flexible(child: Text(message.textContent ?? '', style: TextStyle(color: foreground, height: 1.35))),
+                  Flexible(
+                    child: Text(
+                      message.textContent ?? '',
+                      style: TextStyle(color: foreground, height: 1.35, fontSize: 15),
+                    ),
+                  ),
                   if (isMine) _StatusIcon(message: message),
                 ],
               ),
@@ -348,8 +513,8 @@ class _StatusIcon extends StatelessWidget {
         : message.deliveredAt != null
             ? Icons.done_all
             : Icons.done;
-    final onBubble = Theme.of(context).colorScheme.onPrimary;
-    final color = message.readAt != null ? AppTheme.peach : onBubble.withValues(alpha: 0.7);
+    // Sits on the Bloom gradient: read = solid white, otherwise faded.
+    final color = message.readAt != null ? Colors.white : Colors.white.withValues(alpha: 0.6);
     return Padding(
       padding: const EdgeInsets.only(left: 6),
       child: Icon(icon, size: 14, color: color),

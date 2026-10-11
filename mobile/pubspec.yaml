@@ -43,3 +43,24 @@ dependency_overrides:
 
 flutter:
   uses-material-design: true
+
+  # Mock voice clips (Windows TTS) and stylized placeholder portraits for
+  # the DEMO_MODE build (lib/demo/demo_backend.dart). ~2 MB.
+  assets:
+    - assets/demo/audio/
+    - assets/demo/images/
+
+  # Brand typeface (OFL 1.1, licence in assets/fonts/OFL.txt) -- bundled,
+  # not fetched at runtime, so first launch offline still looks right.
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800

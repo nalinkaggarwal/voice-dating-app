@@ -18,7 +18,7 @@ import 'voice_recording_step.dart';
 /// basic-info -> ... -> photo flow in the brief); a user can't skip
 /// ahead because each step's completion is what advances currentStep.
 class OnboardingFlowScreen extends StatelessWidget {
-  const OnboardingFlowScreen({super.key, this.resumeFrom, required this.currentUserId});
+  const OnboardingFlowScreen({super.key, this.resumeFrom, required this.currentUserId, this.onFinished});
 
   /// The user's current backend UserStatus, so a returning user resumes
   /// at the right step instead of restarting at basicInfo.
@@ -30,6 +30,11 @@ class OnboardingFlowScreen extends StatelessWidget {
   /// hand from the same User fetch resumeFrom comes from.
   final String currentUserId;
 
+  /// Called by the last step's "Start discovering". The app root passes
+  /// this so IT swaps to Discovery -- the step must not replace the root
+  /// route itself, or nothing is left listening for logout.
+  final VoidCallback? onFinished;
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
@@ -38,15 +43,16 @@ class OnboardingFlowScreen extends StatelessWidget {
         if (resumeFrom != null) state.resumeFrom(resumeFrom!);
         return state;
       },
-      child: _OnboardingStepSwitcher(currentUserId: currentUserId),
+      child: _OnboardingStepSwitcher(currentUserId: currentUserId, onFinished: onFinished),
     );
   }
 }
 
 class _OnboardingStepSwitcher extends StatelessWidget {
-  const _OnboardingStepSwitcher({required this.currentUserId});
+  const _OnboardingStepSwitcher({required this.currentUserId, this.onFinished});
 
   final String currentUserId;
+  final VoidCallback? onFinished;
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +71,7 @@ class _OnboardingStepSwitcher extends StatelessWidget {
       case OnboardingStep.photo:
         return const PhotoUploadStep();
       case OnboardingStep.complete:
-        return OnboardingCompleteStep(currentUserId: currentUserId);
+        return OnboardingCompleteStep(currentUserId: currentUserId, onFinished: onFinished);
     }
   }
 }

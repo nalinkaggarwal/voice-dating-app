@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/config/app_config.dart';
 import '../../core/error/app_exception.dart';
+import 'http_client_factory.dart';
 import 'token_storage.dart';
 
 /// Thin wrapper around the backend's HTTP API. Attaches the access token
@@ -14,7 +15,7 @@ import 'token_storage.dart';
 /// hanging.
 class ApiClient {
   ApiClient({http.Client? httpClient, TokenStorage? tokenStorage})
-      : _http = httpClient ?? http.Client(),
+      : _http = httpClient ?? createHttpClient(),
         _tokenStorage = tokenStorage ?? TokenStorage();
 
   final http.Client _http;

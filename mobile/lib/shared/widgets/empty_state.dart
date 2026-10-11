@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/branding.dart';
 
-/// Centred icon-in-a-circle + title + optional body + optional action.
+/// Centred glowing icon badge + title + optional body + optional action.
 /// The one layout for "nothing here yet", "something went wrong" and
 /// "coming later", so those states look like the same app.
+///
+/// Scrolls on its own when given a bounded height that's too short for
+/// it (small phones, keyboard open) -- never a "BOTTOM OVERFLOWED" strip.
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -24,26 +28,21 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+    final content = Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(color: scheme.surfaceContainerHigh, shape: BoxShape.circle),
-              child: Icon(icon, size: 38, color: iconColor ?? scheme.primary),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(title, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
+            _GlowBadge(icon: icon, iconColor: iconColor),
+            const SizedBox(height: AppSpacing.lg),
+            Text(title, style: theme.textTheme.headlineSmall, textAlign: TextAlign.center),
             if (body != null) ...[
-              const SizedBox(height: AppSpacing.xs),
+              const SizedBox(height: AppSpacing.sm),
               Text(
                 body!,
-                style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                style: theme.textTheme.bodyLarge?.copyWith(color: AppTheme.textMuted),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -53,6 +52,48 @@ class EmptyState extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Inside an outer scroll view (unbounded height) just centre;
+        // otherwise scroll if the space is too short.
+        if (!constraints.hasBoundedHeight) return Center(child: content);
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight, minWidth: constraints.maxWidth),
+            child: Center(child: content),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The icon in a softly glowing, gradient-ringed disc.
+class _GlowBadge extends StatelessWidget {
+  const _GlowBadge({required this.icon, this.iconColor});
+
+  final IconData icon;
+  final Color? iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 104,
+      height: 104,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: brandGradient(),
+        boxShadow: [
+          BoxShadow(color: AppTheme.magenta.withValues(alpha: 0.35), blurRadius: 40, spreadRadius: -6),
+        ],
+      ),
+      child: Container(
+        decoration: const BoxDecoration(shape: BoxShape.circle, color: AppTheme.surface1),
+        child: Icon(icon, size: 44, color: iconColor ?? AppTheme.coralLight),
       ),
     );
   }

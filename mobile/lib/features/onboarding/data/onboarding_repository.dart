@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/error/app_exception.dart';
 import '../../../shared/api/api_client.dart';
+import '../../../shared/api/http_client_factory.dart';
 import '../domain/voice_answer.dart';
 
 class UploadTarget {
@@ -15,7 +16,7 @@ class UploadTarget {
 class OnboardingRepository {
   OnboardingRepository({ApiClient? apiClient, http.Client? rawHttpClient})
       : _api = apiClient ?? ApiClient(),
-        _rawHttp = rawHttpClient ?? http.Client();
+        _rawHttp = rawHttpClient ?? createHttpClient();
 
   final ApiClient _api;
   // Direct-to-S3 PUTs bypass ApiClient entirely -- a signed URL carries

@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Lolly.ai brand plum; matches AppTheme.plum in lib/core/theme/app_theme.dart -->
-    <color name="splash_background">#5B2A86</color>
-    <color name="brand_plum">#5B2A86</color>
-    <color name="brand_magenta">#B83A8C</color>
+    <!-- Lolly.ai "Midnight Bloom" brand; matches lib/core/theme/app_theme.dart.
+         splash_background = AppTheme.magenta, the first stop of the Bloom
+         gradient the Flutter splash fades in from (no colour jump). -->
+    <color name="splash_background">#FF2E93</color>
+    <color name="brand_plum">#FF2E93</color>
+    <color name="brand_magenta">#FF9A44</color>
 </resources>

@@ -4,10 +4,12 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/branding.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/ui_kit.dart';
 import '../application/conversations_state.dart';
 import '../domain/conversation.dart';
 import '../domain/message.dart';
 import 'message_thread_screen.dart';
+import '../../../shared/widgets/media_sources.dart';
 
 /// One conversation per AUTHENTICATED_MATCH/ACTIVE Connection this user is
 /// part of. No live updates here (REST-only, refresh on pull/return) --
@@ -37,10 +39,20 @@ class _ConversationsBody extends StatelessWidget {
     final state = context.watch<ConversationsState>();
 
     return Scaffold(
+      backgroundColor: AppTheme.ink,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(title: const Text('Messages')),
-      body: RefreshIndicator(
-        onRefresh: state.load,
-        child: _buildBody(context, state),
+      body: AuroraBackground(
+        intensity: 0.5,
+        child: SafeArea(
+          bottom: false,
+          child: RefreshIndicator(
+            color: AppTheme.magenta,
+            backgroundColor: AppTheme.surface2,
+            onRefresh: state.load,
+            child: _buildBody(context, state),
+          ),
+        ),
       ),
     );
   }
@@ -72,9 +84,14 @@ class _ConversationsBody extends StatelessWidget {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.md + MediaQuery.paddingOf(context).bottom,
+      ),
       itemCount: state.conversations.length,
-      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm + 2),
       itemBuilder: (context, index) => _ConversationTile(
         conversation: state.conversations[index],
         currentUserId: currentUserId,
@@ -87,6 +104,8 @@ class _ConversationsBody extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
+        // EmptyState sees an unbounded height here, so it doesn't add a
+        // nested scroll view (which would swallow the pull-to-refresh).
         child: ConstrainedBox(constraints: BoxConstraints(minHeight: constraints.maxHeight), child: child),
       ),
     );
@@ -108,47 +127,68 @@ class _ConversationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final isVoice = conversation.lastMessage?.type == MessageType.voice;
+    final isNew = conversation.lastMessage == null;
 
-    return Material(
-      color: scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(AppRadius.lg),
-      child: ListTile(
-        leading: _Avatar(photoUrl: conversation.photoUrl),
-        title: Text(conversation.displayName ?? 'Your match', style: theme.textTheme.titleMedium),
-        subtitle: Row(
-          children: [
-            if (isVoice) ...[
-              Icon(Icons.graphic_eq_rounded, size: 16, color: scheme.tertiary),
-              const SizedBox(width: AppSpacing.xs),
-            ],
-            Expanded(
-              child: Text(
-                _previewText(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-            ),
-          ],
-        ),
-        trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => MessageThreadScreen(
-              connectionId: conversation.connectionId,
-              currentUserId: currentUserId,
-              otherUserId: conversation.otherUserId,
-              otherDisplayName: conversation.displayName,
-            ),
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.md - 2),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => MessageThreadScreen(
+            connectionId: conversation.connectionId,
+            currentUserId: currentUserId,
+            otherUserId: conversation.otherUserId,
+            otherDisplayName: conversation.displayName,
           ),
         ),
+      ),
+      child: Row(
+        children: [
+          _Avatar(photoUrl: conversation.photoUrl),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  conversation.displayName ?? 'Your match',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    if (isVoice) ...[
+                      const Icon(Icons.graphic_eq_rounded, size: 16, color: AppTheme.coral),
+                      const SizedBox(width: AppSpacing.xs),
+                    ],
+                    Expanded(
+                      child: Text(
+                        _previewText(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: isNew ? AppTheme.coralLight : AppTheme.textMuted,
+                          fontWeight: isNew ? FontWeight.w600 : null,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+        ],
       ),
     );
   }
 }
 
+/// Photo inside a thin Bloom-gradient ring; gradient disc when there's
+/// no photo.
 class _Avatar extends StatelessWidget {
   const _Avatar({required this.photoUrl});
 
@@ -156,14 +196,18 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (photoUrl != null) {
-      return CircleAvatar(radius: 26, backgroundImage: NetworkImage(photoUrl!));
-    }
     return Container(
-      width: 52,
-      height: 52,
+      width: 56,
+      height: 56,
+      padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(gradient: brandGradient(), shape: BoxShape.circle),
-      child: const Icon(Icons.person_rounded, color: Colors.white),
+      child: photoUrl != null
+          ? Container(
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(color: AppTheme.ink, shape: BoxShape.circle),
+              child: CircleAvatar(backgroundColor: AppTheme.surface3, backgroundImage: imageProviderFor(photoUrl!)),
+            )
+          : const Icon(Icons.person_rounded, color: Colors.white, size: 28),
     );
   }
 }

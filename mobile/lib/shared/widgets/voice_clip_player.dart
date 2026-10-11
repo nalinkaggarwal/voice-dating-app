@@ -26,9 +26,9 @@ class VoiceClipPlayer extends StatefulWidget {
   /// Hide the waveform where there's no room (dense rows).
   final bool showWaveform;
 
-  /// Override the control's colour family -- e.g. `onPrimary` when the
-  /// player sits on a primary-coloured chat bubble. Defaults to the
-  /// theme's primary, switching to the coral accent while playing.
+  /// Override the control's colour family -- e.g. white when the player
+  /// sits on a gradient chat bubble (a solid [tint] disc with a magenta
+  /// glyph). Defaults to the Bloom-gradient disc with a coral waveform.
   final Color? tint;
 
   @override
@@ -61,26 +61,51 @@ class _VoiceClipPlayerState extends State<VoiceClipPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final tinted = widget.tint != null;
-    final background = tinted
-        ? widget.tint!
-        : _isPlaying
-            ? scheme.tertiary
-            : scheme.primary;
-    final foreground = tinted ? scheme.primary : Colors.white;
+    final tint = widget.tint;
+    final tinted = tint != null;
+    // Same footprint as the old IconButton.filled: glyph + 8px each side.
+    final diameter = widget.iconSize + 16;
+    final large = widget.iconSize >= 36;
     final waveColor = tinted
-        ? widget.tint!.withValues(alpha: _isPlaying ? 1 : 0.6)
+        ? tint.withValues(alpha: _isPlaying ? 1 : 0.6)
         : _isPlaying
-            ? scheme.tertiary
-            : scheme.primary.withValues(alpha: 0.45);
+            ? AppTheme.coral
+            : AppTheme.coralLight.withValues(alpha: 0.5);
 
-    final button = IconButton.filled(
-      onPressed: _toggle,
-      tooltip: _isPlaying ? 'Stop' : 'Play',
-      icon: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
-      iconSize: widget.iconSize,
-      style: IconButton.styleFrom(backgroundColor: background, foregroundColor: foreground),
+    final button = Tooltip(
+      message: _isPlaying ? 'Stop' : 'Play',
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        width: diameter,
+        height: diameter,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: tint,
+          gradient: tinted ? null : brandGradient(),
+          boxShadow: tinted
+              ? null
+              : [
+                  BoxShadow(
+                    color: AppTheme.magenta.withValues(alpha: _isPlaying ? 0.6 : 0.4),
+                    blurRadius: diameter * (_isPlaying ? 0.6 : 0.4),
+                    spreadRadius: -diameter * 0.12,
+                    offset: Offset(0, diameter * 0.12),
+                  ),
+                ],
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: _toggle,
+            child: Icon(
+              _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              size: widget.iconSize,
+              color: tinted ? AppTheme.magenta : Colors.white,
+            ),
+          ),
+        ),
+      ),
     );
     if (!widget.showWaveform) return button;
 
@@ -88,9 +113,10 @@ class _VoiceClipPlayerState extends State<VoiceClipPlayer> {
       mainAxisSize: MainAxisSize.min,
       children: [
         button,
-        const SizedBox(width: AppSpacing.sm),
+        SizedBox(width: large ? AppSpacing.md : AppSpacing.sm),
         VoiceWaveform(
           active: _isPlaying,
+          barCount: large ? 11 : 7,
           height: widget.iconSize * 0.9,
           barWidth: (widget.iconSize * 0.1).clamp(3, 6),
           gap: 3,

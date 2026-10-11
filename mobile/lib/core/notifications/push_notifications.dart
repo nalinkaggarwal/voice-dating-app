@@ -72,7 +72,14 @@ class PushNotifications implements PushRegistrar {
   /// redundant (the socket already rendered it) and is not shown.
   String? activeConnectionId;
 
-  Future<void> initialize() async {
+  Future<void>? _initialization;
+
+  /// Safe to call without awaiting (main() does, so the first frame isn't
+  /// held up by Firebase): token sync and sign-out await this same future
+  /// before checking [isAvailable], so they can't race ahead of it.
+  Future<void> initialize() => _initialization ??= _initialize();
+
+  Future<void> _initialize() async {
     try {
       await Firebase.initializeApp();
     } catch (e) {
@@ -109,6 +116,7 @@ class PushNotifications implements PushRegistrar {
 
   @override
   Future<void> syncForSignedInUser() async {
+    await _initialization;
     if (!_available) return;
     try {
       final settings = await FirebaseMessaging.instance.requestPermission();
@@ -128,6 +136,7 @@ class PushNotifications implements PushRegistrar {
 
   @override
   Future<void> unregisterForSignOut() async {
+    await _initialization;
     if (_available) {
       try {
         final token = _lastRegisteredToken ?? await FirebaseMessaging.instance.getToken();

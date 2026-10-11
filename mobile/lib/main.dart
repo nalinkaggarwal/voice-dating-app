@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'core/notifications/push_notifications.dart';
@@ -13,10 +14,23 @@ import 'shared/models/user.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // WP7: Firebase + notification channel + tap handlers. Never throws --
-  // on a build without google-services.json push is simply off.
-  await PushNotifications.instance.initialize();
+  // Portrait only: every screen is designed as a tall phone layout, and
+  // landscape squeezed onboarding into overflow. (Also locked natively in
+  // AndroidManifest, so this needn't be awaited before the first frame.)
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // Dark-only theme -> light status/nav bar icons, edge-to-edge canvas.
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    systemNavigationBarColor: AppTheme.ink,
+    systemNavigationBarIconBrightness: Brightness.light,
+  ));
+  // Draw first: the splash must be on screen the moment the app opens.
   runApp(const LollyApp());
+  // WP7: Firebase + notification channel + tap handlers, in the
+  // background. Never throws -- on a build without google-services.json
+  // push is simply off. Token sync awaits this same init internally.
+  PushNotifications.instance.initialize();
 }
 
 class LollyApp extends StatelessWidget {
@@ -28,9 +42,9 @@ class LollyApp extends StatelessWidget {
       create: (_) => AuthState(pushRegistrar: PushNotifications.instance)..bootstrap(),
       child: MaterialApp(
         title: 'Lolly.ai',
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: ThemeMode.system,
+        theme: AppTheme.dark,
+        themeMode: ThemeMode.dark,
+        debugShowCheckedModeBanner: false,
         // Lets a notification tap push a screen without a BuildContext.
         navigatorKey: PushNotifications.instance.navigatorKey,
         // The brand splash sits above the Navigator so it covers whatever
@@ -55,10 +69,23 @@ class _AppRoot extends StatefulWidget {
 class _AppRootState extends State<_AppRoot> {
   final _authRepository = AuthRepository();
   Future<User>? _currentUserFuture;
+  AuthStatus? _lastStatus;
 
   @override
   Widget build(BuildContext context) {
     final status = context.watch<AuthState>().status;
+
+    // This widget is the root route; screens like Discovery (pushed from
+    // onboarding's last step) or OTP verify sit ON TOP of it. When auth
+    // flips -- logout, or login completing -- the swap happens down here,
+    // so anything stacked above must go or it hides the change ("log out
+    // does nothing"). Pop back to the root on every transition.
+    if (_lastStatus != null && _lastStatus != status) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        PushNotifications.instance.navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      });
+    }
+    _lastStatus = status;
 
     if (status == AuthStatus.unknown) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -95,7 +122,13 @@ class _AppRootState extends State<_AppRoot> {
         if (snapshot.data!.status == UserStatus.active) {
           return DiscoveryHomeScreen(currentUserId: snapshot.data!.id);
         }
-        return OnboardingFlowScreen(resumeFrom: snapshot.data!.status, currentUserId: snapshot.data!.id);
+        return OnboardingFlowScreen(
+          resumeFrom: snapshot.data!.status,
+          currentUserId: snapshot.data!.id,
+          // Re-fetch the user (now ACTIVE) so this root shows Discovery
+          // itself and keeps reacting to auth changes.
+          onFinished: () => setState(() => _currentUserFuture = null),
+        );
       },
     );
   }

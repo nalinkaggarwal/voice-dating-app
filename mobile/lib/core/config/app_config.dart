@@ -16,4 +16,10 @@ class AppConfig {
   );
 
   static bool get isProduction => environment == 'production';
+
+  /// `--dart-define=DEMO_MODE=true`: a self-contained build for UI review.
+  /// Every backend call is answered in-app by DemoBackend (lib/demo/) with
+  /// mock data -- no server, no network needed -- and the OTP is always
+  /// `000000`. Never set for a real build.
+  static const bool demoMode = bool.fromEnvironment('DEMO_MODE');
 }

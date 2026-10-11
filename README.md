@@ -752,21 +752,80 @@ first real test of both, not something this session could verify further.
 See "Verification status" near the top of this file for the consolidated
 summary of exactly what has and hasn't been confirmed.
 
-### Visual identity, splash and launcher icon ("Afterglow", 2026-10-07)
+### Demo build (no backend) for UI review
 
-A refresh in the same spirit as visitorX's, with an identity built for
-*hear before you see* rather than borrowed from it:
+A self-contained APK for testers: every API call is answered in-app by
+`lib/demo/demo_backend.dart` with mock data, so no server or network is
+needed.
 
-- **Colour** (`lib/core/theme/app_theme.dart`): **plum → magenta**
-  (`#5B2A86` → `#B83A8C`) is the brand gradient — after-dark, a little
-  mysterious, the part of someone you haven't seen yet. It seeds the whole
-  Material 3 scheme (tonal surfaces, chips, app bar), light *and* dark
-  (`themeMode: system`). **Coral** (`#FF7A59`) is the voice: reserved for
-  waveforms, the mark's lollipop head, and the ONE call-to-action per
-  screen (`AppTheme.accentButton`), so it always means "this is the
-  moment". Pill buttons, generous radii, `AppSpacing`/`AppRadius` scales
-  instead of ad-hoc numbers, error text on `colorScheme.error` everywhere
-  (no more `Colors.red`).
+```bash
+cd mobile
+flutter build apk --release --dart-define=DEMO_MODE=true --dart-define=APP_ENV=demo
+```
+
+- The OTP is always **`000000`** (the code screen says so in demo builds).
+- **Sign up** with any phone/email runs the full onboarding. **Log in** with
+  an identifier other than the one you signed up with lands in a ready-made,
+  fully onboarded account.
+- Voice intro "processing" takes about 5 s, then shows 3 drafts. Discovery
+  has 3 voices: the 1st and 2nd match, the 3rd doesn't. After a match you get
+  Reveal, then Live Snap (your own camera only, no peer: end the call, then
+  confirm), then chat. Chats reply 2-3 s after you send, sometimes as a
+  voice note. Rohan is a chat already in progress.
+- Media is bundled under `assets/demo/`: Windows-TTS voice clips and
+  stylized placeholder portraits (no real people). The API returns
+  `asset:` URLs for these and `file:` URLs for your own recorded notes;
+  `shared/widgets/media_sources.dart` maps both, and also `http(s)`.
+- How it is wired: `AppConfig.demoMode` makes
+  `shared/api/http_client_factory.dart` hand ApiClient and the upload
+  helpers a `MockClient`. `ChatSocketClient` takes its events from
+  DemoBackend instead of Socket.IO, and `SignalingClient` doesn't connect.
+  Nothing else knows it is a demo; a normal build is unaffected.
+- Same applicationId as the dev build, so installing one replaces the
+  other on a device.
+
+### Visual identity, splash and launcher icon ("Midnight Bloom", 2026-10-11)
+
+Replaces the 2026-10-07 "Afterglow" refresh, which on a real device still
+read as a stock light Material app. Owner's ask: modern and attractive,
+"a dating app, not a classic govt app", theme and colour left to us.
+
+- **Dark-only** (`lib/core/theme/app_theme.dart`): every screen sits on
+  `AppTheme.ink` (`#0C0911`) with `surface1-3` layers and hairline
+  `stroke` borders; `themeMode: dark`, and `AppTheme.light`/`dark` both
+  return the same theme. A late-night canvas suits a voice-first app.
+- **Bloom gradient** (`brandGradient()` in `branding.dart`): magenta →
+  coral → amber (`#FF2E93` → `#FF5E62` → `#FF9A44`). It fills the ONE
+  primary action per screen (`GradientButton`), selected choices, and
+  hero moments (match, reveal, splash). **Violet** (`#7C3AED`) is ambient
+  glow only (`AuroraBackground`). **Coral** stays the voice: waveforms,
+  the mark's lollipop head.
+- **Type**: Plus Jakarta Sans, bundled under `assets/fonts/` (OFL,
+  `OFL.txt` alongside), heavy tight headlines and relaxed body copy.
+- **Shared kit** (`lib/shared/widgets/ui_kit.dart`): `AuroraBackground`,
+  `GradientButton`, `GlassCard`, `ChoicePill`, `ChoiceCard`,
+  `LabeledValue`, `ErrorBanner`, `StepProgressBar`, and
+  `OnboardingScaffold`. Every onboarding step uses `OnboardingScaffold`
+  (progress "Step n of 6", headline, a scrolling body that can't overflow,
+  a pinned primary action). Compose these; don't restyle raw Material
+  widgets per screen.
+- **Portrait only** (`SystemChrome.setPreferredOrientations` in
+  `main.dart`). Landscape overflowed the onboarding steps.
+- **Copy rules the UI must keep**: the discovery card names no one and
+  shows no photo (WP3); the AI-review copy says claims come from what the
+  user *said*, never what they "are" (WP2 guardrail); the photo step says
+  the photo stays hidden until mutual interest, which is when Mutual
+  Reveal happens, *before* Live Snap (WP4).
+
+The bullets below on the mark, splash and launcher icon still apply.
+Colour references in them now mean the Bloom gradient: the Android
+window colour is `#FF2E93` (the gradient's first stop), and the launcher
+icons were re-rendered with the new gradient.
+
+Earlier "Afterglow" notes (2026-10-07), kept for history:
+
+- **Colour** (superseded above): plum → magenta brand gradient, light and
+  dark themes, coral reserved for the one CTA per screen.
 - **Mark** (`lib/core/theme/branding.dart`, `LollyMark`): a lollipop whose
   head holds a five-bar sound wave — the name and the motto in one shape.
   Drawn by a `CustomPainter`, not an asset, with a `progress` input that

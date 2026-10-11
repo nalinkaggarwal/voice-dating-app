@@ -7,14 +7,19 @@ import 'app_theme.dart';
 /// The product line, used on the splash and the auth hero.
 const String kAppTagline = 'Hear before you see.';
 
-/// The brand gradient (plum to magenta) for hero surfaces: splash, auth
-/// header, match screen, launcher-icon background. Same two stops as
-/// android/.../drawable/ic_launcher_background.xml.
+/// The Bloom gradient (magenta -> coral -> amber): the brand. Primary
+/// actions, selected choices, hero surfaces (splash, match, reveal),
+/// launcher-icon background (android/.../drawable/ic_launcher_background.xml).
 LinearGradient brandGradient({
   AlignmentGeometry begin = Alignment.topLeft,
   AlignmentGeometry end = Alignment.bottomRight,
 }) =>
-    LinearGradient(begin: begin, end: end, colors: const [AppTheme.plum, AppTheme.magenta]);
+    LinearGradient(
+      begin: begin,
+      end: end,
+      colors: const [AppTheme.magenta, AppTheme.coral, AppTheme.amber],
+      stops: const [0, 0.55, 1],
+    );
 
 /// Which surface the mark sits on. Only the stick changes: white on the
 /// gradient, plum on a light surface. Head and sound wave are constant.
@@ -56,7 +61,7 @@ class LollyMark extends StatelessWidget {
   Widget build(BuildContext context) {
     final painter = LollyMarkPainter(
       progress: progress,
-      stickColor: style == LollyMarkStyle.onGradient ? Colors.white : AppTheme.plum,
+      stickColor: Colors.white,
       inset: inset,
     );
     final mark = CustomPaint(size: Size.square(size), painter: painter);

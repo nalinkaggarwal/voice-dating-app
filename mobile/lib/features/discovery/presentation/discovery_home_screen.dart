@@ -1,16 +1,17 @@
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/branding.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/ui_kit.dart';
 import '../../../shared/widgets/voice_clip_player.dart';
 import '../../auth/application/auth_state.dart';
 import '../../matches/presentation/match_screen.dart';
 import '../../messaging/presentation/conversations_list_screen.dart';
 import '../application/discovery_state.dart';
 import '../domain/discovery_entry.dart';
+import '../../../shared/widgets/media_sources.dart';
 
 /// Entry point into WP3 discovery -- shows today's ONE curated candidate
 /// (or more than one, for a tier with dailyCandidateLimit > 1; see
@@ -59,28 +60,26 @@ class _DiscoveryBody extends StatelessWidget {
     final state = context.watch<DiscoveryState>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const AppWordmark(withMark: true, fontSize: 22),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.chat_bubble_outline_rounded),
-            tooltip: 'Messages',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => ConversationsListScreen(currentUserId: currentUserId)),
-            ),
+      backgroundColor: AppTheme.ink,
+      body: AuroraBackground(
+        intensity: 0.6,
+        child: SafeArea(
+          child: Column(
+            children: [
+              _Header(
+                onMessages: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => ConversationsListScreen(currentUserId: currentUserId)),
+                ),
+                onLogout: () => context.read<AuthState>().logout(),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
+                  child: _buildBody(context, state),
+                ),
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Log out',
-            onPressed: () => context.read<AuthState>().logout(),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-        ],
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
-          child: _buildBody(context, state),
         ),
       ),
     );
@@ -88,7 +87,7 @@ class _DiscoveryBody extends StatelessWidget {
 
   Widget _buildBody(BuildContext context, DiscoveryState state) {
     if (state.isLoading && state.currentEntry == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const _TuningIn();
     }
 
     if (state.errorMessage != null && state.currentEntry == null) {
@@ -119,6 +118,92 @@ class _DiscoveryBody extends StatelessWidget {
   }
 }
 
+/// Mark + wordmark on the left, round glass icon buttons on the right --
+/// replaces the stock Material AppBar.
+class _Header extends StatelessWidget {
+  const _Header({required this.onMessages, required this.onLogout});
+
+  final VoidCallback onMessages;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
+      child: Row(
+        children: [
+          const Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: AppWordmark(withMark: true, fontSize: 24),
+            ),
+          ),
+          const Spacer(),
+          _GlassIconButton(
+            icon: Icons.chat_bubble_outline_rounded,
+            tooltip: 'Messages',
+            onPressed: onMessages,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          _GlassIconButton(
+            icon: Icons.logout_rounded,
+            tooltip: 'Log out',
+            onPressed: onLogout,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlassIconButton extends StatelessWidget {
+  const _GlassIconButton({required this.icon, required this.tooltip, required this.onPressed});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon, size: 22),
+      tooltip: tooltip,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        fixedSize: const Size.square(46),
+        backgroundColor: AppTheme.surface1.withValues(alpha: 0.8),
+        foregroundColor: AppTheme.textPrimary,
+        side: const BorderSide(color: AppTheme.stroke),
+      ),
+    );
+  }
+}
+
+/// Loading state: a breathing waveform instead of a bare spinner.
+class _TuningIn extends StatelessWidget {
+  const _TuningIn();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const VoiceWaveform(active: true, barCount: 9, height: 56, barWidth: 6, gap: 5, color: AppTheme.coral),
+            const SizedBox(height: AppSpacing.lg),
+            Text("Tuning in today's voice", style: textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.xs),
+            Text('One person, picked for you.', style: textTheme.bodyMedium),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CandidateCard extends StatelessWidget {
   const _CandidateCard({
     required this.entry,
@@ -137,7 +222,6 @@ class _CandidateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
 
     return Column(
       children: [
@@ -145,81 +229,90 @@ class _CandidateCard extends StatelessWidget {
           child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: scheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-              border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+              color: AppTheme.surface1.withValues(alpha: 0.88),
+              borderRadius: BorderRadius.circular(AppRadius.xl),
+              border: Border.all(color: AppTheme.stroke),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.plum.withValues(alpha: 0.25),
+                  blurRadius: 48,
+                  spreadRadius: -12,
+                  offset: const Offset(0, 20),
+                ),
+              ],
             ),
-            child: Column(
-              children: [
-                // No photo, no name -- deliberately. "Hear before you see"
-                // is the whole premise; a candidate's identity is never
-                // shown before a decision (see DiscoveryEntry's own
-                // docstring). The waveform silhouette stands for "someone
-                // new", not a preview of anyone.
-                const _VoiceHeader(),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
+            // Scrolls inside the card so a short screen never overflows;
+            // the like/pass row below stays pinned and reachable.
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // No photo, no name -- deliberately. "Hear before you see"
+                  // is the whole premise; a candidate's identity is never
+                  // shown before a decision (see DiscoveryEntry's own
+                  // docstring). The waveform silhouette stands for "someone
+                  // new", not a preview of anyone.
+                  const _VoiceHeader(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.lg),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text('Someone new', style: theme.textTheme.titleLarge),
+                        Text('Someone new', textAlign: TextAlign.center, style: theme.textTheme.headlineMedium),
                         const SizedBox(height: AppSpacing.xs),
                         Text(
                           'No name, no photo yet. Just listen.',
                           textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                          style: theme.textTheme.bodyLarge?.copyWith(color: AppTheme.textMuted),
                         ),
-                        const SizedBox(height: AppSpacing.lg),
-                        if (entry.voiceClipUrl != null)
-                          // Keyed on the entry -- without this, advancing to
-                          // the next candidate would reuse the previous
-                          // VoiceClipPlayer's State (same widget position in
-                          // the tree), potentially leaving a stale "playing"
-                          // indicator or a still-running player from the
-                          // PREVIOUS candidate's clip.
-                          VoiceClipPlayer(
-                            key: ValueKey(entry.id),
-                            source: UrlSource(entry.voiceClipUrl!),
-                            iconSize: 44,
-                          )
-                        else
-                          Text(
-                            'No voice intro available yet.',
-                            style: theme.textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
-                          ),
                         const SizedBox(height: AppSpacing.lg),
                         Container(
-                          padding: const EdgeInsets.all(AppSpacing.md),
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.md),
                           decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            color: AppTheme.surface2,
+                            borderRadius: BorderRadius.circular(AppRadius.xl),
+                            border: Border.all(color: AppTheme.stroke),
                           ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(Icons.auto_awesome_rounded, size: 18, color: scheme.tertiary),
-                              const SizedBox(width: AppSpacing.sm),
-                              Expanded(child: Text(entry.reasonText, style: theme.textTheme.bodyMedium)),
-                            ],
-                          ),
+                          alignment: Alignment.center,
+                          child: entry.voiceClipUrl != null
+                              // Keyed on the entry -- without this, advancing to
+                              // the next candidate would reuse the previous
+                              // VoiceClipPlayer's State (same widget position in
+                              // the tree), potentially leaving a stale "playing"
+                              // indicator or a still-running player from the
+                              // PREVIOUS candidate's clip.
+                              ? FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: VoiceClipPlayer(
+                                    key: ValueKey(entry.id),
+                                    source: audioSourceFor(entry.voiceClipUrl!),
+                                    iconSize: 44,
+                                  ),
+                                )
+                              : Text(
+                                  'No voice intro available yet.',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+                                ),
                         ),
+                        const SizedBox(height: AppSpacing.md),
+                        _ReasonChip(text: entry.reasonText),
                         if (errorMessage != null) ...[
                           const SizedBox(height: AppSpacing.md),
-                          Text(errorMessage!, style: TextStyle(color: scheme.error), textAlign: TextAlign.center),
+                          ErrorBanner(errorMessage!),
                         ],
                       ],
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             _RoundAction(
               icon: Icons.close_rounded,
@@ -231,7 +324,7 @@ class _CandidateCard extends StatelessWidget {
             _RoundAction(
               icon: Icons.favorite_rounded,
               label: 'Interested',
-              size: 76,
+              size: 80,
               accent: true,
               onTap: isDeciding ? null : onInterested,
             ),
@@ -242,41 +335,116 @@ class _CandidateCard extends StatelessWidget {
   }
 }
 
+/// "Why you two" -- the match reason, in a warm-tinted callout.
+class _ReasonChip extends StatelessWidget {
+  const _ReasonChip({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppTheme.magenta.withValues(alpha: 0.14), AppTheme.amber.withValues(alpha: 0.06)],
+        ),
+        border: Border.all(color: AppTheme.magenta.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShaderMask(
+            shaderCallback: (bounds) => brandGradient().createShader(bounds),
+            child: const Icon(Icons.auto_awesome_rounded, size: 20, color: Colors.white),
+          ),
+          const SizedBox(width: AppSpacing.sm + 2),
+          Expanded(
+            child: Text(text, style: textTheme.bodyMedium?.copyWith(color: AppTheme.textPrimary)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _VoiceHeader extends StatelessWidget {
   const _VoiceHeader();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 190,
+      height: 200,
       decoration: BoxDecoration(gradient: brandGradient()),
       child: Stack(
         children: [
+          // Soft dark vignette at the bottom so the card body reads as
+          // one surface with the hero.
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, AppTheme.ink.withValues(alpha: 0.35)],
+                ),
+              ),
+            ),
+          ),
           Positioned(
             left: AppSpacing.md,
             top: AppSpacing.md,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 2, vertical: AppSpacing.xs),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 4, vertical: AppSpacing.xs + 2),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.16),
+                color: AppTheme.ink.withValues(alpha: 0.28),
                 borderRadius: BorderRadius.circular(AppRadius.xl),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
               ),
-              child: const Text(
-                "TODAY'S VOICE",
-                style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.graphic_eq_rounded, size: 14, color: Colors.white),
+                  SizedBox(width: AppSpacing.xs + 2),
+                  Text(
+                    "TODAY'S VOICE",
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.4,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
           Center(
             child: Container(
-              width: 112,
-              height: 112,
+              width: 120,
+              height: 120,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.16),
+                color: Colors.white.withValues(alpha: 0.14),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 2),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 2),
+                boxShadow: [
+                  BoxShadow(color: Colors.white.withValues(alpha: 0.18), blurRadius: 40, spreadRadius: 4),
+                ],
               ),
-              child: const Icon(Icons.graphic_eq_rounded, size: 56, color: Colors.white),
+              alignment: Alignment.center,
+              child: const VoiceWaveform(
+                active: false,
+                barCount: 7,
+                height: 52,
+                barWidth: 6,
+                gap: 5,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
@@ -303,34 +471,50 @@ class _RoundAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final enabled = onTap != null;
-    final background = accent ? scheme.tertiary : scheme.surfaceContainerHigh;
-    final foreground = accent ? scheme.onTertiary : scheme.onSurface;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Opacity(
-          opacity: enabled ? 1 : 0.5,
-          child: Material(
-            color: background,
-            shape: CircleBorder(
-              side: accent ? BorderSide.none : BorderSide(color: scheme.outlineVariant),
+        AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: enabled ? 1 : 0.45,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: accent ? brandGradient() : null,
+              color: accent ? null : AppTheme.surface2,
+              border: accent ? null : Border.all(color: const Color(0x33FFFFFF), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: accent ? AppTheme.magenta.withValues(alpha: 0.5) : Colors.black.withValues(alpha: 0.35),
+                  blurRadius: accent ? 32 : 18,
+                  spreadRadius: accent ? -4 : -6,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
-            child: InkWell(
-              onTap: onTap,
-              customBorder: const CircleBorder(),
-              child: SizedBox(
-                width: size,
-                height: size,
-                child: Icon(icon, size: size * 0.46, color: foreground),
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: onTap,
+                customBorder: const CircleBorder(),
+                child: Icon(
+                  icon,
+                  size: size * 0.44,
+                  color: accent ? Colors.white : AppTheme.textPrimary,
+                ),
               ),
             ),
           ),
         ),
         const SizedBox(height: AppSpacing.sm),
-        Text(label, style: theme.textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant)),
+        Text(
+          label,
+          style: theme.textTheme.labelLarge?.copyWith(color: accent ? AppTheme.textPrimary : AppTheme.textMuted),
+        ),
       ],
     );
   }

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/error/app_exception.dart';
 import '../../../shared/api/api_client.dart';
+import '../../../shared/api/http_client_factory.dart';
 import '../domain/conversation.dart';
 import '../domain/message.dart';
 
@@ -25,7 +26,7 @@ class MessageHistoryPage {
 class MessagingRepository {
   MessagingRepository({ApiClient? apiClient, http.Client? rawHttpClient})
       : _api = apiClient ?? ApiClient(),
-        _rawHttp = rawHttpClient ?? http.Client();
+        _rawHttp = rawHttpClient ?? createHttpClient();
 
   final ApiClient _api;
   // Same reasoning as OnboardingRepository's own copy of this: a signed
